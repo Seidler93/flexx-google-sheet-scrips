@@ -59,9 +59,20 @@
               <span>Cancels This Week</span>
               <strong id="metricCancelsThisWeek">-</strong>
             </div>
+            <div class="metric-card">
+              <span>Weekly Net</span>
+              <strong id="metricWeeklyNet">-</strong>
+            </div>
           </div>
 
-          <div class="panel dashboard-table-panel">
+          <div id="masterSnapshotPanel" class="panel dashboard-table-panel" hidden>
+            <div class="panel-header">
+              <h2>All Locations</h2>
+            </div>
+            <div id="masterSnapshotTable" class="table-wrap empty-state">Loading locations...</div>
+          </div>
+
+          <div id="dashboardMembersPanel" class="panel dashboard-table-panel">
             <div class="panel-header">
               <h2>Members</h2>
               <div class="column-menu">

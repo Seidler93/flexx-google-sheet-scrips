@@ -13,7 +13,16 @@ function include(filename) {
 }
 
 function getAlertConfig_() {
-  return FLEXX_CONFIG.alerts || {};
+  var alerts = FLEXX_CONFIG.alerts || {};
+  var propertyName = String(alerts.slackWebhookPropertyName || '').trim();
+  var slackWebhookUrl = String(alerts.slackWebhookUrl || '').trim();
+  if (!slackWebhookUrl && propertyName) {
+    slackWebhookUrl = String(PropertiesService.getScriptProperties().getProperty(propertyName) || '').trim();
+  }
+  return {
+    email: alerts.email || '',
+    slackWebhookUrl: slackWebhookUrl
+  };
 }
 
 function notifyAppIssue_(subject, details) {

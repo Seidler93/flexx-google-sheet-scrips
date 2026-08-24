@@ -3,8 +3,10 @@ var FLEXX_CONFIG = (function () {
   var PRODUCTION_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbzbd5Oo9SGcYsb7phOGouruJY1XzB_Ru6JPlfxo8JMU_C5qdcVgvmWmlWVRZ7BKBOdU/exec';
   var ALERTS = {
     email: '',
-    slackWebhookUrl: ''
+    slackWebhookUrl: '',
+    slackWebhookPropertyName: 'FLEXX_SLACK_WEBHOOK_URL'
   };
+  var MASTER_LOCATION_KEY = 'master';
 
   var LOCATIONS = {
     highlandPark: {
@@ -33,6 +35,14 @@ var FLEXX_CONFIG = (function () {
 
   function getLocation(locationKey) {
     var resolvedKey = resolveLocationKey(locationKey);
+    if (resolvedKey === MASTER_LOCATION_KEY) {
+      return {
+        key: MASTER_LOCATION_KEY,
+        name: 'Master',
+        spreadsheetId: '',
+        sheets: {}
+      };
+    }
     var location = LOCATIONS[resolvedKey];
     return {
       key: resolvedKey,
@@ -43,12 +53,15 @@ var FLEXX_CONFIG = (function () {
   }
 
   function getPublicLocations() {
-    return Object.keys(LOCATIONS).map(function (key) {
+    return [{
+      key: MASTER_LOCATION_KEY,
+      name: 'Master'
+    }].concat(Object.keys(LOCATIONS).map(function (key) {
       return {
         key: key,
         name: LOCATIONS[key].name
       };
-    });
+    }));
   }
 
   function getLocationKeys() {
@@ -56,6 +69,9 @@ var FLEXX_CONFIG = (function () {
   }
 
   function resolveLocationKey(locationKey) {
+    if (locationKey === MASTER_LOCATION_KEY) {
+      return MASTER_LOCATION_KEY;
+    }
     if (locationKey && LOCATIONS[locationKey]) {
       return locationKey;
     }

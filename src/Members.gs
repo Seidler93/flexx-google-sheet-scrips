@@ -97,6 +97,10 @@ var UPCOMING_HOLD_HEADERS = [
 ];
 
 function getDashboardData(locationKey) {
+  if (resolveLocationKey_(locationKey) === 'master') {
+    return getMasterDashboardData_();
+  }
+
   var location = getLocationConfig_(locationKey);
   var sheet = getMembersSheet_(location.key);
   var data = readMembersTable_(sheet);
@@ -108,7 +112,8 @@ function getDashboardData(locationKey) {
     active: 0,
     greenHolds: 0,
     yellowHolds: 0,
-    cancelsThisWeek: 0
+    cancelsThisWeek: 0,
+    weeklyNet: 0
   };
   var currentWeek = getCurrentWeekBounds_();
 
@@ -117,6 +122,7 @@ function getDashboardData(locationKey) {
   });
 
   summary.cancelsThisWeek = getCancellationsThisWeek_(location.key, currentWeek);
+  summary.weeklyNet = getSignupsThisWeek_(headers, rows, currentWeek) - summary.cancelsThisWeek;
 
   return {
     location: {
@@ -125,6 +131,67 @@ function getDashboardData(locationKey) {
     },
     summary: summary,
     memberTable: buildDashboardMemberTable_(headers, rows, data.firstDataRow)
+  };
+}
+
+function getMasterDashboardData_() {
+  var currentWeek = getCurrentWeekBounds_();
+  var totals = {
+    active: 0,
+    greenHolds: 0,
+    yellowHolds: 0,
+    cancelsThisWeek: 0,
+    weeklyNet: 0
+  };
+
+  var rows = FLEXX_CONFIG.getLocationKeys().map(function (locationKey) {
+    var location = getLocationConfig_(locationKey);
+    var sheet = getMembersSheet_(location.key);
+    var data = readMembersTable_(sheet);
+    var statusIndex = data.headers.indexOf('Membership Status');
+    var summary = {
+      active: 0,
+      greenHolds: 0,
+      yellowHolds: 0,
+      cancelsThisWeek: getCancellationsThisWeek_(location.key, currentWeek),
+      weeklyNet: 0
+    };
+
+    data.rows.forEach(function (row) {
+      incrementStatusSummary_(summary, getCellDisplay_(row[statusIndex]));
+    });
+    summary.weeklyNet = getSignupsThisWeek_(data.headers, data.rows, currentWeek) - summary.cancelsThisWeek;
+
+    totals.active += summary.active;
+    totals.greenHolds += summary.greenHolds;
+    totals.yellowHolds += summary.yellowHolds;
+    totals.cancelsThisWeek += summary.cancelsThisWeek;
+    totals.weeklyNet += summary.weeklyNet;
+
+    return {
+      locationKey: location.key,
+      locationName: location.name,
+      activeMembers: summary.active + summary.greenHolds,
+      greenHolds: summary.greenHolds,
+      yellowHolds: summary.yellowHolds,
+      cancelsThisWeek: summary.cancelsThisWeek,
+      weeklyNet: summary.weeklyNet
+    };
+  });
+
+  return {
+    master: true,
+    location: {
+      key: 'master',
+      name: 'Master'
+    },
+    summary: totals,
+    snapshotRows: rows,
+    memberTable: {
+      columns: [],
+      defaultVisibleColumns: [],
+      rows: []
+    }
   };
 }
 
@@ -314,31 +381,67 @@ function addMemberFromWebApp(locationKey, form) {
 }
 
 function backfillMemberIdsForAllLocations() {
-  var results = FLEXX_CONFIG.getLocationKeys().map(function (locationKey) {
-    return backfillMemberIdsForLocation_(locationKey);
-  });
-  return results;
+  try {
+    var results = FLEXX_CONFIG.getLocationKeys().map(function (locationKey) {
+      return backfillMemberIdsForLocation_(locationKey);
+    });
+    console.log('backfillMemberIdsForAllLocations results: ' + JSON.stringify(results));
+    return results;
+  } catch (error) {
+    notifyAppIssue_('Flexx Staff Member ID backfill failed', error.stack || error.message || String(error));
+    throw error;
+  }
 }
 
 function backfillMemberIdsForDefaultLocation() {
-  return backfillMemberIdsForLocation_(FLEXX_CONFIG.defaultLocationKey);
+  try {
+    var result = backfillMemberIdsForLocation_(FLEXX_CONFIG.defaultLocationKey);
+    console.log('backfillMemberIdsForDefaultLocation result: ' + JSON.stringify(result));
+    return result;
+  } catch (error) {
+    notifyAppIssue_('Flexx Staff Member ID backfill failed', error.stack || error.message || String(error));
+    throw error;
+  }
 }
 
 function validateAllLocationSheets() {
-  var results = FLEXX_CONFIG.getLocationKeys().map(function (locationKey) {
-    return validateLocationSheets_(locationKey);
-  });
-  var issues = [];
-  results.forEach(function (result) {
-    issues = issues.concat(result.issues);
-  });
-  if (issues.length) {
-    notifyAppIssue_(
-      'Flexx Staff validation found sheet issues',
-      issues.join('\n')
-    );
+  try {
+    var results = FLEXX_CONFIG.getLocationKeys().map(function (locationKey) {
+      return validateLocationSheets_(locationKey);
+    });
+    var issues = [];
+    results.forEach(function (result) {
+      issues = issues.concat(result.issues);
+    });
+    if (issues.length) {
+      notifyAppIssue_(
+        'Flexx Staff validation found sheet issues',
+        issues.join('\n')
+      );
+    }
+    console.log('validateAllLocationSheets results: ' + JSON.stringify(results));
+    return results;
+  } catch (error) {
+    notifyAppIssue_('Flexx Staff validation failed', error.stack || error.message || String(error));
+    throw error;
   }
-  return results;
+}
+
+function promoteUpcomingHoldsForAllLocations() {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var results = FLEXX_CONFIG.getLocationKeys().map(function (locationKey) {
+      return promoteUpcomingHoldsForLocation_(locationKey);
+    });
+    console.log('promoteUpcomingHoldsForAllLocations results: ' + JSON.stringify(results));
+    return results;
+  } catch (error) {
+    notifyAppIssue_('Flexx Staff upcoming hold promotion failed', error.stack || error.message || String(error));
+    throw error;
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function getMember(locationKey, memberId) {
@@ -897,6 +1000,86 @@ function validateSheetExists_(spreadsheet, sheetName, locationName, label, issue
   }
 }
 
+function promoteUpcomingHoldsForLocation_(locationKey) {
+  var location = getLocationConfig_(locationKey);
+  var spreadsheet = SpreadsheetApp.openById(location.spreadsheetId);
+  var membersSheet = getRequiredSheet_(spreadsheet, location.sheets.members, 'Members');
+  var holdsSheet = getRequiredSheet_(spreadsheet, location.sheets.holds, 'HOLDS');
+  var upcomingSheet = getRequiredSheet_(spreadsheet, location.sheets.upcomingHolds || 'Upcoming Holds', 'Upcoming Holds');
+  var headers = ensureUpcomingHoldHeaders_(upcomingSheet);
+  var lastRow = upcomingSheet.getLastRow();
+  var promoted = 0;
+  var skipped = 0;
+  var issues = [];
+
+  if (lastRow < 2) {
+    return {
+      location: location.name,
+      promoted: 0,
+      skipped: 0,
+      issues: []
+    };
+  }
+
+  var values = upcomingSheet.getRange(2, 1, lastRow - 1, headers.length).getValues();
+  for (var index = values.length - 1; index >= 0; index -= 1) {
+    var sheetRow = index + 2;
+    var row = values[index];
+    if (row.every(function (value) { return String(value || '').trim() === ''; })) {
+      skipped += 1;
+      continue;
+    }
+
+    var name = String(valueForHeader_(headers, row, 'Name') || '').trim();
+    var startDate = valueForHeader_(headers, row, 'Start Date');
+    if (!isDateTodayOrPast_(startDate)) {
+      skipped += 1;
+      continue;
+    }
+
+    var memberInfo = findMemberByName_(membersSheet, name);
+    if (!memberInfo) {
+      issues.push(location.name + ': could not find member for upcoming hold "' + name + '".');
+      continue;
+    }
+
+    var reason = valueForHeader_(headers, row, 'Reason');
+    var returnDate = valueForHeader_(headers, row, 'Return Date?');
+    var targetHoldType = calculateHoldType_(startDate, returnDate);
+    var targetStatus = HOLD_STATUSES[targetHoldType];
+    var endNurture = targetHoldType === 'yellow'
+      ? valueForHeader_(headers, row, 'End of 6-week Nurture') || addDays_(startDate, 42)
+      : '';
+    var holdRow = [
+      name,
+      targetStatus,
+      valueForHeader_(headers, row, 'Membership Age'),
+      reason,
+      startDate,
+      valueForHeader_(headers, row, 'Next Contact'),
+      returnDate,
+      endNurture
+    ];
+
+    clearHoldRowsForMember_(holdsSheet, name);
+    appendHoldRow_(holdsSheet, targetHoldType, holdRow);
+    updateMemberFromHold_(memberInfo, targetStatus, reason);
+    upcomingSheet.deleteRow(sheetRow);
+    promoted += 1;
+  }
+
+  if (issues.length) {
+    notifyAppIssue_('Flexx Staff upcoming hold promotion issue', issues.join('\n'));
+  }
+  SpreadsheetApp.flush();
+  return {
+    location: location.name,
+    promoted: promoted,
+    skipped: skipped,
+    issues: issues
+  };
+}
+
 function ensureMemberIdColumn_(sheet) {
   var headers = getSheetHeaderRow_(sheet, MEMBER_HEADERS.length + 1);
   var existingIndex = headers.indexOf(MEMBER_ID_HEADER);
@@ -1378,6 +1561,21 @@ function isDateInBounds_(value, bounds) {
   return date >= bounds.start && date < bounds.end;
 }
 
+function getSignupsThisWeek_(headers, rows, bounds) {
+  var createdDateIndex = headers.indexOf('Created Date');
+  if (createdDateIndex === -1) {
+    return 0;
+  }
+
+  var count = 0;
+  rows.forEach(function (row) {
+    if (isDateInBounds_(row[createdDateIndex], bounds)) {
+      count += 1;
+    }
+  });
+  return count;
+}
+
 function isFutureDate_(date) {
   if (!(date instanceof Date) || isNaN(date.getTime())) {
     return false;
@@ -1387,6 +1585,17 @@ function isFutureDate_(date) {
   var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   var target = new Date(date.getFullYear(), date.getMonth(), date.getDate());
   return target > today;
+}
+
+function isDateTodayOrPast_(date) {
+  if (!(date instanceof Date) || isNaN(date.getTime())) {
+    return false;
+  }
+
+  var now = new Date();
+  var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  var target = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  return target <= today;
 }
 
 function normalizeDateValue_(value) {

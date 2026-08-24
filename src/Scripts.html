@@ -56,6 +56,10 @@
     elements.metricGreenHolds = document.getElementById('metricGreenHolds');
     elements.metricYellowHolds = document.getElementById('metricYellowHolds');
     elements.metricCancelsThisWeek = document.getElementById('metricCancelsThisWeek');
+    elements.metricWeeklyNet = document.getElementById('metricWeeklyNet');
+    elements.masterSnapshotPanel = document.getElementById('masterSnapshotPanel');
+    elements.masterSnapshotTable = document.getElementById('masterSnapshotTable');
+    elements.dashboardMembersPanel = document.getElementById('dashboardMembersPanel');
     elements.columnMenuButton = document.getElementById('columnMenuButton');
     elements.columnMenu = document.getElementById('columnMenu');
     elements.dashboardMemberTable = document.getElementById('dashboardMemberTable');
@@ -139,6 +143,10 @@
       renderLocationLabel();
       clearMemberProfile();
       clearSearchResults();
+      if (isMasterLocation() && state.activeView !== 'dashboard') {
+        switchView('dashboard');
+        return;
+      }
       loadActiveViewData();
     });
 
@@ -234,6 +242,13 @@
   function renderLocationLabel() {
     const location = getCurrentLocation();
     elements.locationLabel.textContent = location ? location.name : '';
+    elements.addMemberButton.disabled = isMasterLocation();
+    elements.globalSearchInput.disabled = isMasterLocation();
+    elements.globalSearchInput.placeholder = isMasterLocation() ? 'Select a location to search' : 'Search members or cancels';
+    if (isMasterLocation()) {
+      elements.globalSearchInput.value = '';
+      clearGlobalSearchResults();
+    }
   }
 
   function getCurrentLocation() {
@@ -243,7 +258,14 @@
     return state.config.locations.find((location) => location.key === state.locationKey);
   }
 
+  function isMasterLocation() {
+    return state.locationKey === 'master';
+  }
+
   function switchView(view) {
+    if (isMasterLocation() && view !== 'dashboard') {
+      view = 'dashboard';
+    }
     state.activeView = view;
     elements.pageTitle.textContent = getViewTitle(view);
     document.querySelectorAll('.nav-item[data-view]').forEach((button) => {
@@ -326,8 +348,13 @@
     elements.metricGreenHolds.textContent = '-';
     elements.metricYellowHolds.textContent = '-';
     elements.metricCancelsThisWeek.textContent = '-';
+    elements.metricWeeklyNet.textContent = '-';
     elements.dashboardMemberTable.className = 'table-wrap empty-state';
     elements.dashboardMemberTable.textContent = 'Loading members...';
+    elements.masterSnapshotPanel.hidden = true;
+    elements.dashboardMembersPanel.hidden = false;
+    elements.masterSnapshotTable.className = 'table-wrap empty-state';
+    elements.masterSnapshotTable.textContent = 'Loading locations...';
     elements.columnMenu.hidden = true;
     elements.columnMenuButton.setAttribute('aria-expanded', 'false');
   }
@@ -337,12 +364,71 @@
     elements.metricGreenHolds.textContent = data.summary.greenHolds;
     elements.metricYellowHolds.textContent = data.summary.yellowHolds;
     elements.metricCancelsThisWeek.textContent = data.summary.cancelsThisWeek;
+    elements.metricWeeklyNet.textContent = formatSignedNumber(data.summary.weeklyNet || 0);
 
+    if (data.master) {
+      state.dashboardColumns = [];
+      state.dashboardRows = [];
+      state.visibleDashboardColumns = [];
+      elements.dashboardMembersPanel.hidden = true;
+      elements.masterSnapshotPanel.hidden = false;
+      renderMasterSnapshotTable(data.snapshotRows || []);
+      return;
+    }
+
+    elements.masterSnapshotPanel.hidden = true;
+    elements.dashboardMembersPanel.hidden = false;
     state.dashboardColumns = data.memberTable.columns;
     state.dashboardRows = data.memberTable.rows;
     state.visibleDashboardColumns = restoreVisibleColumns(data.memberTable);
     renderColumnMenu();
     renderDashboardTable();
+  }
+
+  function renderMasterSnapshotTable(rows) {
+    if (!rows.length) {
+      elements.masterSnapshotTable.className = 'table-wrap empty-state';
+      elements.masterSnapshotTable.textContent = 'No locations found.';
+      return;
+    }
+
+    const columns = [
+      { key: 'locationName', label: 'Location' },
+      { key: 'activeMembers', label: 'Active Members' },
+      { key: 'greenHolds', label: 'Holds' },
+      { key: 'yellowHolds', label: 'Extended Holds' },
+      { key: 'cancelsThisWeek', label: 'Cancels This Week' },
+      { key: 'weeklyNet', label: 'Weekly Net' }
+    ];
+    const table = document.createElement('table');
+    table.className = 'member-table master-snapshot-table';
+    const thead = document.createElement('thead');
+    const headerRow = document.createElement('tr');
+    columns.forEach((column) => {
+      const th = document.createElement('th');
+      th.textContent = column.label;
+      headerRow.appendChild(th);
+    });
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    rows.forEach((entry) => {
+      const row = document.createElement('tr');
+      columns.forEach((column) => {
+        const td = document.createElement('td');
+        td.dataset.label = column.label;
+        const value = entry[column.key];
+        td.textContent = column.key === 'weeklyNet' ? formatSignedNumber(value || 0) : value;
+        row.appendChild(td);
+      });
+      tbody.appendChild(row);
+    });
+    table.appendChild(tbody);
+
+    elements.masterSnapshotTable.className = 'table-wrap';
+    elements.masterSnapshotTable.innerHTML = '';
+    elements.masterSnapshotTable.appendChild(table);
   }
 
   function loadHolds() {
@@ -1423,6 +1509,14 @@
       minimumFractionDigits: numericValue % 1 === 0 ? 0 : 2,
       maximumFractionDigits: 2
     })}`;
+  }
+
+  function formatSignedNumber(value) {
+    const numberValue = Number(value || 0);
+    if (numberValue > 0) {
+      return `+${numberValue}`;
+    }
+    return String(numberValue);
   }
 
   function renderDaysPerWeekPill(cell, value) {

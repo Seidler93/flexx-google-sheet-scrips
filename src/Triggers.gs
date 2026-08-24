@@ -24,3 +24,23 @@ function openStaffDashboard() {
 function runMemberUpdateHooks_(context) {
   // Existing onEdit business logic will be refactored here later.
 }
+
+function setupUpcomingHoldCheckTrigger() {
+  deleteUpcomingHoldCheckTriggers_();
+  ScriptApp.newTrigger('promoteUpcomingHoldsForAllLocations')
+    .timeBased()
+    .everyDays(1)
+    .atHour(5)
+    .nearMinute(15)
+    .create();
+  console.log('Upcoming hold check trigger installed for about 5:15 AM daily.');
+  return 'Upcoming hold check trigger installed for about 5:15 AM daily.';
+}
+
+function deleteUpcomingHoldCheckTriggers_() {
+  ScriptApp.getProjectTriggers().forEach(function (trigger) {
+    if (trigger.getHandlerFunction() === 'promoteUpcomingHoldsForAllLocations') {
+      ScriptApp.deleteTrigger(trigger);
+    }
+  });
+}

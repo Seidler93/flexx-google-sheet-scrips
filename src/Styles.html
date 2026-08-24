@@ -1835,7 +1835,7 @@
 
   @media (max-width: 700px), (pointer: coarse) {
     body {
-      padding-top: 56px;
+      padding-top: 64px;
     }
 
     .mobile-topbar {
@@ -1843,20 +1843,25 @@
       background: var(--sidebar);
       color: #ffffff;
       display: grid;
-      grid-template-columns: 48px minmax(0, 1fr) 48px;
-      height: 56px;
+      grid-template-columns: 54px minmax(0, 1fr) 54px;
+      height: 64px;
       inset: 0 0 auto 0;
-      padding: 8px 10px;
+      padding: 9px 12px;
       position: fixed;
       z-index: 90;
     }
 
     .mobile-topbar strong {
-      font-size: 16px;
+      font-size: 18px;
       justify-self: center;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+    }
+
+    .mobile-nav-button {
+      min-height: 42px;
+      min-width: 42px;
     }
 
     .mobile-drawer-backdrop {
@@ -1879,7 +1884,7 @@
 
     .app-shell {
       display: block;
-      min-height: calc(100vh - 56px);
+      min-height: calc(100vh - 64px);
     }
 
     .sidebar {
@@ -1917,9 +1922,9 @@
     }
 
     .content {
-      height: calc(100vh - 56px);
+      height: calc(100vh - 64px);
       overflow: auto;
-      padding: 10px;
+      padding: 12px;
     }
 
     .topbar {
@@ -1937,7 +1942,7 @@
       padding: 8px 10px;
       position: fixed;
       right: 0;
-      top: 56px;
+      top: 64px;
       z-index: 86;
     }
 
@@ -1956,24 +1961,24 @@
 
     .metric-grid {
       display: grid;
-      gap: 8px;
+      gap: 10px;
       grid-template-columns: repeat(2, minmax(0, 1fr));
-      margin-bottom: 10px;
+      margin-bottom: 12px;
     }
 
     .metric-card {
       border-radius: 8px;
-      min-height: 74px;
-      padding: 10px;
+      min-height: 88px;
+      padding: 12px;
     }
 
     .metric-card span {
-      font-size: 11px;
+      font-size: 12px;
       line-height: 1.25;
     }
 
     .metric-card strong {
-      font-size: 25px;
+      font-size: 31px;
       line-height: 1;
     }
 
@@ -2006,11 +2011,11 @@
       border-radius: 8px;
       cursor: pointer;
       display: grid;
-      gap: 10px;
+      gap: 12px;
       grid-template-columns: minmax(0, 1fr) auto;
-      margin-bottom: 8px;
-      min-height: 68px;
-      padding: 14px 12px;
+      margin-bottom: 10px;
+      min-height: 82px;
+      padding: 16px 14px;
     }
 
     .mobile-dashboard-table td {
@@ -2025,11 +2030,19 @@
     }
 
     .mobile-dashboard-table td[data-label="Name"] {
-      font-size: 15px;
+      font-size: 17px;
       font-weight: 800;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+    }
+
+    .mobile-status-value {
+      font-size: 13px;
+      min-height: 32px;
+      min-width: 92px;
+      padding: 8px 12px;
+      justify-content: center;
     }
 
     .mobile-action-backdrop {

@@ -1,6 +1,10 @@
 var FLEXX_CONFIG = (function () {
   var DEFAULT_LOCATION_KEY = 'highlandPark';
   var PRODUCTION_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbzbd5Oo9SGcYsb7phOGouruJY1XzB_Ru6JPlfxo8JMU_C5qdcVgvmWmlWVRZ7BKBOdU/exec';
+  var ALERTS = {
+    email: '',
+    slackWebhookUrl: ''
+  };
 
   var LOCATIONS = {
     highlandPark: {
@@ -9,7 +13,20 @@ var FLEXX_CONFIG = (function () {
       sheets: {
         members: 'Members',
         holds: 'HOLDS',
-        cancellations: 'Cancellations/Ex-Members'
+        upcomingHolds: 'Upcoming Holds',
+        cancellations: 'Cancellations/Ex-Members',
+        data: 'Dashboard'
+      }
+    },
+    glenview: {
+      name: 'Glenview',
+      spreadsheetId: '1giWziogztj9JriRn1c1LK8X-dYBMGGuIikjgWBo2mlc',
+      sheets: {
+        members: 'Members',
+        holds: 'HOLDS',
+        upcomingHolds: 'Upcoming Holds',
+        cancellations: 'Cancellations/Ex-Members',
+        data: 'Dashboard'
       }
     }
   };
@@ -32,6 +49,10 @@ var FLEXX_CONFIG = (function () {
         name: LOCATIONS[key].name
       };
     });
+  }
+
+  function getLocationKeys() {
+    return Object.keys(LOCATIONS);
   }
 
   function resolveLocationKey(locationKey) {
@@ -57,9 +78,11 @@ var FLEXX_CONFIG = (function () {
   }
 
   return {
+    alerts: ALERTS,
     defaultLocationKey: DEFAULT_LOCATION_KEY,
     productionWebAppUrl: PRODUCTION_WEB_APP_URL,
     getLocation: getLocation,
+    getLocationKeys: getLocationKeys,
     getPublicLocations: getPublicLocations,
     resolveLocationKey: resolveLocationKey,
     findLocationKeyBySpreadsheetId: findLocationKeyBySpreadsheetId,

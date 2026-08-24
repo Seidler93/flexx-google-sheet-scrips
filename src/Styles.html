@@ -21,8 +21,10 @@
     display: none !important;
   }
 
+  html,
   body {
     margin: 0;
+    padding: 0;
     min-height: 100vh;
     background: var(--bg);
     color: var(--text);
@@ -40,6 +42,7 @@
     display: grid;
     grid-template-columns: 260px minmax(0, 1fr);
     min-height: 100vh;
+    margin: 0;
   }
 
   .sidebar {
@@ -50,16 +53,17 @@
 
   .brand {
     display: block;
-    margin-bottom: 24px;
+    margin-bottom: 18px;
   }
 
   .brand-logo {
     display: block;
-    width: min(180px, 100%);
+    width: 118px;
     height: auto;
+    margin: 0 auto;
     border-radius: 8px;
     background: #ffffff;
-    padding: 10px;
+    padding: 7px;
   }
 
   .field-label {
@@ -470,6 +474,65 @@
     color: #b91c1c;
   }
 
+  .days-pill {
+    display: inline-grid;
+    place-items: center;
+    width: 78px;
+    min-height: 24px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 1;
+    padding: 5px 8px;
+    white-space: nowrap;
+  }
+
+  .days-one {
+    background: #e0f2fe;
+    color: #0369a1;
+  }
+
+  .days-two {
+    background: #dbeafe;
+    color: #1d4ed8;
+  }
+
+  .days-three {
+    background: #ede9fe;
+    color: #6d28d9;
+  }
+
+  .days-four {
+    background: #cffafe;
+    color: #0e7490;
+  }
+
+  .days-neutral {
+    background: #eef2f7;
+    color: #475467;
+  }
+
+  .boolean-indicator {
+    display: inline-grid;
+    place-items: center;
+    font-weight: 800;
+    line-height: 1;
+  }
+
+  .boolean-true {
+    width: 22px;
+    height: 22px;
+    border-radius: 999px;
+    background: var(--accent);
+    color: #ffffff;
+    font-size: 14px;
+  }
+
+  .boolean-false {
+    color: var(--muted);
+    font-size: 16px;
+  }
+
   .member-table tbody tr {
     cursor: pointer;
   }
@@ -665,6 +728,89 @@
     max-height: 36vh;
   }
 
+  .data-table-wrap {
+    max-height: calc(100vh - 170px);
+  }
+
+  .data-timeline-table {
+    min-width: 1120px;
+  }
+
+  .data-timeline-table th,
+  .data-timeline-table td {
+    min-width: 74px;
+    padding: 9px 10px;
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  .data-timeline-table th:first-child,
+  .data-timeline-table td:first-child {
+    left: 0;
+    min-width: 210px;
+    position: sticky;
+    text-align: left;
+    z-index: 2;
+  }
+
+  .data-timeline-table th:nth-child(2),
+  .data-timeline-table td:nth-child(2) {
+    left: 210px;
+    min-width: 78px;
+    position: sticky;
+    z-index: 2;
+  }
+
+  .data-timeline-table th:nth-child(3),
+  .data-timeline-table td:nth-child(3) {
+    left: 288px;
+    min-width: 86px;
+    position: sticky;
+    z-index: 2;
+  }
+
+  .data-timeline-table td:first-child,
+  .data-timeline-table td:nth-child(2),
+  .data-timeline-table td:nth-child(3) {
+    background: #ffffff;
+  }
+
+  .data-timeline-table thead th {
+    background: #c9ced6;
+    color: #000000;
+    text-align: center;
+    z-index: 3;
+  }
+
+  .data-timeline-table thead tr:first-child th {
+    top: 0;
+  }
+
+  .data-timeline-table thead tr:nth-child(2) th {
+    top: 38px;
+  }
+
+  .data-timeline-table .data-location-header {
+    background: #5a83e6;
+    color: #000000;
+    font-size: 20px;
+    text-align: left;
+  }
+
+  .data-timeline-table tbody tr:nth-child(even) td {
+    background: #f4f4f4;
+  }
+
+  .data-timeline-table tbody tr:nth-child(even) td:first-child,
+  .data-timeline-table tbody tr:nth-child(even) td:nth-child(2),
+  .data-timeline-table tbody tr:nth-child(even) td:nth-child(3) {
+    background: #f4f4f4;
+  }
+
+  .data-metric-cell {
+    font-weight: 700;
+  }
+
   .section-header-green {
     background: #eaf2fb;
     color: #1f5594;
@@ -673,6 +819,11 @@
   .section-header-yellow {
     background: #fff8c5;
     color: #713f12;
+  }
+
+  .section-header-upcoming {
+    background: #f0f4ff;
+    color: #1f3a8a;
   }
 
   .section-count {
@@ -1077,6 +1228,41 @@
       color: var(--muted);
       content: attr(data-label);
       font-weight: 700;
+    }
+
+    .data-timeline-table,
+    .data-timeline-table thead,
+    .data-timeline-table tbody,
+    .data-timeline-table tr {
+      display: revert;
+    }
+
+    .data-timeline-table thead {
+      display: table-header-group;
+    }
+
+    .data-timeline-table tbody {
+      display: table-row-group;
+    }
+
+    .data-timeline-table tr {
+      display: table-row;
+      border-bottom: 0;
+      padding: 0;
+    }
+
+    .data-timeline-table th,
+    .data-timeline-table td {
+      display: table-cell;
+      max-width: none;
+    }
+
+    .data-timeline-table thead {
+      display: table-header-group;
+    }
+
+    .data-timeline-table td::before {
+      content: none;
     }
 
     .status-text {

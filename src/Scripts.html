@@ -10,6 +10,7 @@
     cancellationsColumns: [],
     cancellationsRows: [],
     visibleCancellationsColumns: [],
+    dataTimeline: null,
     holdsData: null,
     pendingHoldSaves: {},
     viewCache: {},
@@ -50,6 +51,7 @@
     elements.membersView = document.getElementById('membersView');
     elements.holdsView = document.getElementById('holdsView');
     elements.cancellationsView = document.getElementById('cancellationsView');
+    elements.dataView = document.getElementById('dataView');
     elements.metricActive = document.getElementById('metricActive');
     elements.metricGreenHolds = document.getElementById('metricGreenHolds');
     elements.metricYellowHolds = document.getElementById('metricYellowHolds');
@@ -60,6 +62,9 @@
     elements.cancellationsColumnMenuButton = document.getElementById('cancellationsColumnMenuButton');
     elements.cancellationsColumnMenu = document.getElementById('cancellationsColumnMenu');
     elements.cancellationsTable = document.getElementById('cancellationsTable');
+    elements.dataTimelineTitle = document.getElementById('dataTimelineTitle');
+    elements.dataTimelineMeta = document.getElementById('dataTimelineMeta');
+    elements.dataTimelineTable = document.getElementById('dataTimelineTable');
     elements.memberSearchInput = document.getElementById('memberSearchInput');
     elements.memberSearchButton = document.getElementById('memberSearchButton');
     elements.searchResults = document.getElementById('searchResults');
@@ -84,8 +89,10 @@
     elements.submitHoldButton = document.getElementById('submitHoldButton');
     elements.greenHoldsTable = document.getElementById('greenHoldsTable');
     elements.yellowHoldsTable = document.getElementById('yellowHoldsTable');
+    elements.upcomingHoldsTable = document.getElementById('upcomingHoldsTable');
     elements.greenHoldsCount = document.getElementById('greenHoldsCount');
     elements.yellowHoldsCount = document.getElementById('yellowHoldsCount');
+    elements.upcomingHoldsCount = document.getElementById('upcomingHoldsCount');
     elements.cancelModal = document.getElementById('cancelModal');
     elements.closeCancelModalButton = document.getElementById('closeCancelModalButton');
     elements.cancelCancelButton = document.getElementById('cancelCancelButton');
@@ -246,6 +253,7 @@
     elements.membersView.classList.toggle('active', view === 'members');
     elements.holdsView.classList.toggle('active', view === 'holds');
     elements.cancellationsView.classList.toggle('active', view === 'cancellations');
+    elements.dataView.classList.toggle('active', view === 'data');
     loadActiveViewData();
   }
 
@@ -259,6 +267,9 @@
     if (view === 'cancellations') {
       return 'Cancellations';
     }
+    if (view === 'data') {
+      return 'Data';
+    }
     return 'Dashboard';
   }
 
@@ -267,6 +278,8 @@
       loadHolds();
     } else if (state.activeView === 'cancellations') {
       loadCancellations();
+    } else if (state.activeView === 'data') {
+      loadDataTimeline();
     } else if (state.activeView === 'dashboard') {
       loadDashboard();
     }
@@ -373,14 +386,19 @@
     elements.greenHoldsTable.textContent = 'Loading holds...';
     elements.yellowHoldsTable.className = 'table-wrap empty-state';
     elements.yellowHoldsTable.textContent = 'Loading extended holds...';
+    elements.upcomingHoldsCount.textContent = '-';
+    elements.upcomingHoldsTable.className = 'table-wrap empty-state';
+    elements.upcomingHoldsTable.textContent = 'Loading upcoming holds...';
   }
 
   function renderHolds(data) {
     state.holdsData = data;
     elements.greenHoldsCount.textContent = data.green.rows.length;
     elements.yellowHoldsCount.textContent = data.yellow.rows.length;
+    elements.upcomingHoldsCount.textContent = data.upcoming ? data.upcoming.rows.length : 0;
     renderStaticTable(elements.greenHoldsTable, data.green.columns, data.green.rows, 'No green holds found.');
     renderStaticTable(elements.yellowHoldsTable, data.yellow.columns, data.yellow.rows, 'No extended holds found.');
+    renderStaticTable(elements.upcomingHoldsTable, data.upcoming ? data.upcoming.columns : [], data.upcoming ? data.upcoming.rows : [], 'No upcoming holds found.');
   }
 
   function loadCancellations() {
@@ -430,6 +448,118 @@
     state.visibleCancellationsColumns = restoreVisibleColumnsForTable(data, 'cancellations');
     renderCancellationsColumnMenu();
     renderCancellationsTable();
+  }
+
+  function loadDataTimeline() {
+    const requestLocationKey = state.locationKey;
+    const cachedData = getCachedViewData('data');
+    if (cachedData) {
+      renderDataTimeline(cachedData);
+      setStatus('Refreshing data...');
+    } else {
+      setStatus('Loading data...');
+      setDataTimelineLoading();
+    }
+    if (state.loadingViews.data) {
+      return;
+    }
+    state.loadingViews.data = true;
+    google.script.run
+      .withSuccessHandler((data) => {
+        if (requestLocationKey !== state.locationKey) {
+          return;
+        }
+        state.loadingViews.data = false;
+        setCachedViewData('data', data);
+        renderDataTimeline(data);
+        setStatus('');
+      })
+      .withFailureHandler((error) => {
+        if (requestLocationKey !== state.locationKey) {
+          return;
+        }
+        state.loadingViews.data = false;
+        showError(error);
+      })
+      .getDataTimeline(state.locationKey);
+  }
+
+  function setDataTimelineLoading() {
+    elements.dataTimelineTitle.textContent = 'Weekly Data';
+    elements.dataTimelineMeta.textContent = '';
+    elements.dataTimelineTable.className = 'table-wrap data-table-wrap empty-state';
+    elements.dataTimelineTable.textContent = 'Loading data...';
+  }
+
+  function renderDataTimeline(data) {
+    state.dataTimeline = data;
+    elements.dataTimelineTitle.textContent = data.title || 'Weekly Data';
+    elements.dataTimelineMeta.textContent = data.periods && data.periods.length
+      ? `${data.periods.length} weeks`
+      : '';
+
+    if (!data.rows || !data.rows.length || !data.periods || !data.periods.length) {
+      elements.dataTimelineTable.className = 'table-wrap data-table-wrap empty-state';
+      elements.dataTimelineTable.textContent = 'No weekly data found.';
+      return;
+    }
+
+    const table = document.createElement('table');
+    table.className = 'member-table data-timeline-table';
+    const thead = document.createElement('thead');
+    const topHeaderRow = document.createElement('tr');
+    const locationHeader = document.createElement('th');
+    locationHeader.className = 'data-location-header';
+    locationHeader.colSpan = 3;
+    locationHeader.textContent = data.title || 'Data';
+    topHeaderRow.appendChild(locationHeader);
+    data.periods.forEach((period) => {
+      const th = document.createElement('th');
+      th.textContent = period.startLabel || '';
+      topHeaderRow.appendChild(th);
+    });
+    thead.appendChild(topHeaderRow);
+
+    const bottomHeaderRow = document.createElement('tr');
+    ['Metric', 'Goal', 'Average'].forEach((label) => {
+      const th = document.createElement('th');
+      th.textContent = label;
+      bottomHeaderRow.appendChild(th);
+    });
+    data.periods.forEach((period) => {
+      const th = document.createElement('th');
+      th.textContent = period.endLabel || '';
+      bottomHeaderRow.appendChild(th);
+    });
+    thead.appendChild(bottomHeaderRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    data.rows.forEach((entry) => {
+      const row = document.createElement('tr');
+      appendDataTimelineCell(row, 'Metric', entry.metric, true);
+      appendDataTimelineCell(row, 'Goal', entry.goal, false);
+      appendDataTimelineCell(row, 'Average', entry.average, false);
+      entry.values.forEach((value) => {
+        appendDataTimelineCell(row, 'Value', value, false);
+      });
+      tbody.appendChild(row);
+    });
+    table.appendChild(tbody);
+
+    elements.dataTimelineTable.className = 'table-wrap data-table-wrap';
+    elements.dataTimelineTable.innerHTML = '';
+    elements.dataTimelineTable.appendChild(table);
+  }
+
+  function appendDataTimelineCell(row, label, value, isMetric) {
+    const cell = document.createElement('td');
+    cell.dataset.label = label;
+    if (isMetric) {
+      cell.className = 'data-metric-cell';
+    }
+    cell.textContent = value || '';
+    row.appendChild(cell);
   }
 
   function prefetchHolds() {
@@ -545,10 +675,27 @@
   }
 
   function renderHoldCell(cell, column, entry) {
-    const value = entry.fields[column] || '';
+    const value = getFieldValue(entry.fields, column);
     const isPending = isHoldCellPending(entry, column);
     if (isPending) {
       cell.classList.add('pending-cell');
+    }
+
+    if (entry.holdType === 'upcoming') {
+      if ((column === 'Name' || column === 'Membership Age') && entry.memberId) {
+        cell.classList.add('clickable-cell');
+        cell.tabIndex = 0;
+        cell.textContent = value;
+        cell.addEventListener('click', () => loadMember(entry.memberId));
+        cell.addEventListener('keydown', (event) => {
+          if (event.key === 'Enter') {
+            loadMember(entry.memberId);
+          }
+        });
+        return;
+      }
+      renderDashboardCell(cell, column, value);
+      return;
     }
 
     if ((column === 'Name' || column === 'Membership Age') && entry.memberId) {
@@ -1129,7 +1276,7 @@
   }
 
   function renderCancellationCell(cell, column, entry) {
-    const value = entry.fields[column] || '';
+    const value = getFieldValue(entry.fields, column);
     if (column === 'Membership Status') {
       cell.appendChild(createStatusSelect(value || 'Cancel', ['Cancel', 'Active'], (select) => {
         handleCancellationStatusChange(entry, select);
@@ -1140,7 +1287,7 @@
     if ((column === 'Name' || column === 'Membership Age at Cancel') && entry.memberId) {
       cell.classList.add('clickable-cell');
     }
-    cell.textContent = value || '';
+    renderTableDisplayCell(cell, column, value);
   }
 
   function handleCancellationStatusChange(entry, select) {
@@ -1204,7 +1351,102 @@
       return;
     }
 
+    renderTableDisplayCell(cell, column, value);
+  }
+
+  function renderTableDisplayCell(cell, column, value) {
+    if (column === 'Price Point') {
+      cell.textContent = formatPricePoint(value);
+      return;
+    }
+
+    if (column === 'Days Per Week') {
+      renderDaysPerWeekPill(cell, value);
+      return;
+    }
+
+    if (renderBooleanDisplay(cell, value)) {
+      return;
+    }
+
     cell.textContent = value || '';
+  }
+
+  function getFieldValue(fields, column) {
+    return Object.prototype.hasOwnProperty.call(fields, column) ? fields[column] : '';
+  }
+
+  function renderBooleanDisplay(cell, value) {
+    const booleanValue = getBooleanDisplayValue(value);
+    if (booleanValue === null) {
+      return false;
+    }
+
+    const indicator = document.createElement('span');
+    indicator.className = booleanValue ? 'boolean-indicator boolean-true' : 'boolean-indicator boolean-false';
+    indicator.textContent = booleanValue ? '✓' : '-';
+    indicator.setAttribute('aria-label', booleanValue ? 'True' : 'False');
+    cell.appendChild(indicator);
+    return true;
+  }
+
+  function getBooleanDisplayValue(value) {
+    if (value === true) {
+      return true;
+    }
+    if (value === false) {
+      return false;
+    }
+
+    const normalized = String(value || '').trim().toLowerCase();
+    if (normalized === 'true' || normalized === 'yes') {
+      return true;
+    }
+    if (normalized === 'false' || normalized === 'no') {
+      return false;
+    }
+    return null;
+  }
+
+  function formatPricePoint(value) {
+    const raw = String(value || '').trim();
+    if (!raw) {
+      return '';
+    }
+
+    const numericValue = Number(raw.replace(/[$,]/g, ''));
+    if (Number.isNaN(numericValue)) {
+      return raw;
+    }
+
+    return `$${numericValue.toLocaleString(undefined, {
+      minimumFractionDigits: numericValue % 1 === 0 ? 0 : 2,
+      maximumFractionDigits: 2
+    })}`;
+  }
+
+  function renderDaysPerWeekPill(cell, value) {
+    const pill = document.createElement('span');
+    pill.className = `days-pill ${getDaysPerWeekClass(value)}`;
+    pill.textContent = value || '-';
+    cell.appendChild(pill);
+  }
+
+  function getDaysPerWeekClass(value) {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (normalized === '1x/week') {
+      return 'days-one';
+    }
+    if (normalized === '2x/week') {
+      return 'days-two';
+    }
+    if (normalized === '3x/week') {
+      return 'days-three';
+    }
+    if (normalized === '4x/week') {
+      return 'days-four';
+    }
+    return 'days-neutral';
   }
 
   function createStatusSelect(value, options, onChange) {
@@ -2128,7 +2370,7 @@
         updateHoldButtons();
         updateProfileActions();
         loadActiveViewData();
-        setStatus('Hold saved.');
+        setStatus(result.upcoming ? 'Upcoming hold saved.' : 'Hold saved.');
       })
       .withFailureHandler((error) => {
         state.holding = false;

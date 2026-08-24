@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html>
   <head>
     <base target="_top">
@@ -20,6 +20,7 @@
           <button class="nav-item disabled" type="button" disabled>Attendance</button>
           <button class="nav-item" data-view="holds" type="button">Holds</button>
           <button class="nav-item" data-view="cancellations" type="button">Cancels</button>
+          <button class="nav-item" data-view="data" type="button">Data</button>
           <button class="nav-item disabled" type="button" disabled>Reports</button>
         </nav>
       </aside>
@@ -105,6 +106,14 @@
               </div>
               <div id="yellowHoldsTable" class="table-wrap empty-state">Loading extended holds...</div>
             </div>
+
+            <div class="panel holds-panel upcoming-holds-panel">
+              <div class="panel-header section-header-upcoming">
+                <h2>Upcoming Holds</h2>
+                <span id="upcomingHoldsCount" class="section-count">0</span>
+              </div>
+              <div id="upcomingHoldsTable" class="table-wrap empty-state">Loading upcoming holds...</div>
+            </div>
           </div>
         </section>
 
@@ -120,6 +129,16 @@
               </div>
             </div>
             <div id="cancellationsTable" class="table-wrap empty-state">Loading cancellations...</div>
+          </div>
+        </section>
+
+        <section id="dataView" class="view">
+          <div class="panel data-panel">
+            <div class="panel-header">
+              <h2 id="dataTimelineTitle">Weekly Data</h2>
+              <span id="dataTimelineMeta" class="item-meta"></span>
+            </div>
+            <div id="dataTimelineTable" class="table-wrap data-table-wrap empty-state">Loading data...</div>
           </div>
         </section>
       </main>

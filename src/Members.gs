@@ -1,3 +1,5 @@
+var MEMBER_ID_HEADER = 'Member ID';
+
 var MEMBER_HEADERS = [
   'Name',
   'Membership Status',
@@ -82,6 +84,17 @@ var HOLD_STATUSES = {
   green: 'Green Hold',
   yellow: 'Yellow Hold'
 };
+
+var UPCOMING_HOLD_HEADERS = [
+  'Name',
+  'Membership Status',
+  'Membership Age',
+  'Reason',
+  'Start Date',
+  'Next Contact',
+  'Return Date?',
+  'End of 6-week Nurture'
+];
 
 function getDashboardData(locationKey) {
   var location = getLocationConfig_(locationKey);
@@ -261,6 +274,7 @@ function addMemberFromWebApp(locationKey, form) {
     var referral = Boolean(form && form.referral);
     var pricePoint = String(form && form.pricePoint || '').trim();
 
+    setValueForHeader_(headers, row, MEMBER_ID_HEADER, createMemberId_(resolvedLocationKey));
     setValueForHeader_(headers, row, 'Name', formattedName);
     setValueForHeader_(headers, row, 'Membership Status', 'Active');
     setValueForHeader_(headers, row, 'Membership Age', 'New member under 90 days');
@@ -297,6 +311,34 @@ function addMemberFromWebApp(locationKey, form) {
   } finally {
     lock.releaseLock();
   }
+}
+
+function backfillMemberIdsForAllLocations() {
+  var results = FLEXX_CONFIG.getLocationKeys().map(function (locationKey) {
+    return backfillMemberIdsForLocation_(locationKey);
+  });
+  return results;
+}
+
+function backfillMemberIdsForDefaultLocation() {
+  return backfillMemberIdsForLocation_(FLEXX_CONFIG.defaultLocationKey);
+}
+
+function validateAllLocationSheets() {
+  var results = FLEXX_CONFIG.getLocationKeys().map(function (locationKey) {
+    return validateLocationSheets_(locationKey);
+  });
+  var issues = [];
+  results.forEach(function (result) {
+    issues = issues.concat(result.issues);
+  });
+  if (issues.length) {
+    notifyAppIssue_(
+      'Flexx Staff validation found sheet issues',
+      issues.join('\n')
+    );
+  }
+  return results;
 }
 
 function getMember(locationKey, memberId) {
@@ -382,6 +424,7 @@ function setMemberStatus(locationKey, payload) {
     var spreadsheet = SpreadsheetApp.openById(location.spreadsheetId);
     var sheet = getRequiredSheet_(spreadsheet, location.sheets.members, 'Members');
     var holdsSheet = getRequiredSheet_(spreadsheet, location.sheets.holds, 'HOLDS');
+    var upcomingHoldsSheet = getRequiredSheet_(spreadsheet, location.sheets.upcomingHolds || 'Upcoming Holds', 'Upcoming Holds');
     var cancellationsSheet = getRequiredSheet_(spreadsheet, location.sheets.cancellations, 'Cancellations/Ex-Members');
     validateMemberRow_(sheet, rowNumber);
 
@@ -398,6 +441,7 @@ function setMemberStatus(locationKey, payload) {
     }
     rowRange.setValues([row]);
     clearHoldRowsForMember_(holdsSheet, name);
+    clearUpcomingHoldRowsForMember_(upcomingHoldsSheet, name);
     if (payload && payload.cancellationRowNumber) {
       setCancellationRowStatus_(cancellationsSheet, Number(payload.cancellationRowNumber), status);
     }
@@ -490,6 +534,7 @@ function putMemberOnHold(locationKey, payload) {
     var spreadsheet = SpreadsheetApp.openById(location.spreadsheetId);
     var membersSheet = getRequiredSheet_(spreadsheet, location.sheets.members, 'Members');
     var holdsSheet = getRequiredSheet_(spreadsheet, location.sheets.holds, 'HOLDS');
+    var upcomingHoldsSheet = getRequiredSheet_(spreadsheet, location.sheets.upcomingHolds || 'Upcoming Holds', 'Upcoming Holds');
 
     validateMemberRow_(membersSheet, rowNumber);
 
@@ -500,11 +545,9 @@ function putMemberOnHold(locationKey, payload) {
     var name = getCellDisplay_(valueForHeader_(headers, row, 'Name'));
     var membershipAge = getCellDisplay_(valueForHeader_(headers, row, 'Membership Age'));
 
-    setValueForHeader_(headers, row, 'Membership Status', holdStatus);
     setValueForHeader_(headers, row, 'Reason/Solution', reason);
-    rowRange.setValues([row]);
 
-    var holdRowNumber = appendHoldRow_(holdsSheet, holdType, [
+    var holdRow = [
       name,
       holdStatus,
       membershipAge,
@@ -513,7 +556,23 @@ function putMemberOnHold(locationKey, payload) {
       parseIsoDate_(payload.nextContact),
       returnDate,
       holdType === 'yellow' ? parseIsoDate_(payload.endOfNurture) || addDays_(startDate, 42) : ''
-    ]);
+    ];
+    clearHoldRowsForMember_(holdsSheet, name);
+    clearUpcomingHoldRowsForMember_(upcomingHoldsSheet, name);
+
+    var isUpcomingHold = isFutureDate_(startDate);
+    var holdRowNumber;
+    var holdSheetName;
+    if (isUpcomingHold) {
+      holdRowNumber = appendUpcomingHoldRow_(upcomingHoldsSheet, holdRow);
+      holdSheetName = upcomingHoldsSheet.getName();
+    } else {
+      setValueForHeader_(headers, row, 'Membership Status', holdStatus);
+      holdRowNumber = appendHoldRow_(holdsSheet, holdType, holdRow);
+      holdSheetName = holdsSheet.getName();
+    }
+
+    rowRange.setValues([row]);
 
     SpreadsheetApp.flush();
 
@@ -528,14 +587,16 @@ function putMemberOnHold(locationKey, payload) {
       oldNotes: valueForHeader_(headers, before, 'Notes'),
       newNotes: valueForHeader_(headers, row, 'Notes'),
       holdType: holdType,
-      holdSheet: holdsSheet.getName(),
+      holdSheet: holdSheetName,
       holdRowNumber: holdRowNumber,
-      holdReason: reason
+      holdReason: reason,
+      upcoming: isUpcomingHold
     });
 
     return {
       member: getMember(resolvedLocationKey, rowNumber),
-      holdRowNumber: holdRowNumber
+      holdRowNumber: holdRowNumber,
+      upcoming: isUpcomingHold
     };
   } finally {
     lock.releaseLock();
@@ -546,12 +607,14 @@ function getHoldsData(locationKey) {
   var location = getLocationConfig_(locationKey);
   var spreadsheet = SpreadsheetApp.openById(location.spreadsheetId);
   var holdsSheet = getRequiredSheet_(spreadsheet, location.sheets.holds, 'HOLDS');
+  var upcomingHoldsSheet = getRequiredSheet_(spreadsheet, location.sheets.upcomingHolds || 'Upcoming Holds', 'Upcoming Holds');
   var membersSheet = getRequiredSheet_(spreadsheet, location.sheets.members, 'Members');
   var memberRowMap = getMemberRowMapByName_(membersSheet);
 
   return {
     green: readHoldSection_(holdsSheet, 'green', memberRowMap),
-    yellow: readHoldSection_(holdsSheet, 'yellow', memberRowMap)
+    yellow: readHoldSection_(holdsSheet, 'yellow', memberRowMap),
+    upcoming: readUpcomingHoldSection_(upcomingHoldsSheet, memberRowMap)
   };
 }
 
@@ -593,6 +656,63 @@ function getCancellationsData(locationKey) {
     defaultVisibleColumns: CANCELLATIONS_DEFAULT_FIELDS.filter(function (fieldName) {
       return headers.indexOf(fieldName) > -1;
     }),
+    rows: rows
+  };
+}
+
+function getDataTimeline(locationKey) {
+  var location = getLocationConfig_(locationKey);
+  var spreadsheet = SpreadsheetApp.openById(location.spreadsheetId);
+  var sheet = getRequiredSheet_(spreadsheet, location.sheets.data || 'Dashboard', 'Data');
+  var lastRow = sheet.getLastRow();
+  var lastColumn = sheet.getLastColumn();
+  if (lastRow < 2 || lastColumn < 4) {
+    return {
+      title: location.name,
+      periods: [],
+      rows: []
+    };
+  }
+
+  var displayValues = sheet.getRange(1, 1, lastRow, lastColumn).getDisplayValues();
+  var title = String(displayValues[1] && displayValues[1][0] || location.name).trim() || location.name;
+  var periods = [];
+  for (var column = 4; column <= lastColumn; column += 1) {
+    var topLabel = String(displayValues[0][column - 1] || '').trim();
+    var bottomLabel = String(displayValues[1][column - 1] || '').trim();
+    if (!topLabel && !bottomLabel && isTimelineColumnEmpty_(displayValues, column - 1)) {
+      continue;
+    }
+    periods.push({
+      columnIndex: column,
+      startLabel: topLabel,
+      endLabel: bottomLabel
+    });
+  }
+
+  var rows = [];
+  for (var rowIndex = 2; rowIndex < displayValues.length; rowIndex += 1) {
+    var row = displayValues[rowIndex];
+    var label = String(row[0] || '').trim();
+    var goal = String(row[1] || '').trim();
+    var average = String(row[2] || '').trim();
+    var values = periods.map(function (period) {
+      return String(row[period.columnIndex - 1] || '').trim();
+    });
+    if (!label && !goal && !average && values.every(function (value) { return !value; })) {
+      continue;
+    }
+    rows.push({
+      metric: label,
+      goal: goal,
+      average: average,
+      values: values
+    });
+  }
+
+  return {
+    title: title,
+    periods: periods,
     rows: rows
   };
 }
@@ -690,10 +810,123 @@ function getMembersSheet_(locationKey) {
   return getRequiredSheet_(spreadsheet, location.sheets.members, 'Members');
 }
 
+function backfillMemberIdsForLocation_(locationKey) {
+  var location = getLocationConfig_(locationKey);
+  var sheet = getMembersSheet_(location.key);
+  var idColumn = ensureMemberIdColumn_(sheet);
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    return {
+      location: location.name,
+      addedColumn: idColumn.addedColumn,
+      updatedRows: 0
+    };
+  }
+
+  var values = sheet.getRange(2, idColumn.index + 1, lastRow - 1, 1).getValues();
+  var updatedRows = 0;
+  values.forEach(function (row) {
+    if (!String(row[0] || '').trim()) {
+      row[0] = createMemberId_(location.key);
+      updatedRows += 1;
+    }
+  });
+
+  if (updatedRows) {
+    sheet.getRange(2, idColumn.index + 1, values.length, 1).setValues(values);
+  }
+
+  return {
+    location: location.name,
+    addedColumn: idColumn.addedColumn,
+    updatedRows: updatedRows
+  };
+}
+
+function validateLocationSheets_(locationKey) {
+  var location = getLocationConfig_(locationKey);
+  var spreadsheet = SpreadsheetApp.openById(location.spreadsheetId);
+  var issues = [];
+
+  validateSheetExists_(spreadsheet, location.sheets.members, location.name, 'Members', issues);
+  validateSheetExists_(spreadsheet, location.sheets.holds, location.name, 'HOLDS', issues);
+  validateSheetExists_(spreadsheet, location.sheets.upcomingHolds || 'Upcoming Holds', location.name, 'Upcoming Holds', issues);
+  validateSheetExists_(spreadsheet, location.sheets.cancellations, location.name, 'Cancellations/Ex-Members', issues);
+  validateSheetExists_(spreadsheet, location.sheets.data || 'Dashboard', location.name, 'Dashboard', issues);
+
+  var membersSheet = spreadsheet.getSheetByName(location.sheets.members);
+  if (membersSheet) {
+    var memberHeaders = getSheetHeaderRow_(membersSheet, MEMBER_HEADERS.length);
+    MEMBER_HEADERS.forEach(function (header) {
+      if (memberHeaders.indexOf(header) === -1) {
+        issues.push(location.name + ': Members is missing header "' + header + '".');
+      }
+    });
+  }
+
+  var holdsSheet = spreadsheet.getSheetByName(location.sheets.holds);
+  if (holdsSheet) {
+    try {
+      findHoldSection_(holdsSheet, 'green');
+      findHoldSection_(holdsSheet, 'yellow');
+    } catch (error) {
+      issues.push(location.name + ': HOLDS layout issue - ' + error.message);
+    }
+  }
+
+  var cancellationsSheet = spreadsheet.getSheetByName(location.sheets.cancellations);
+  if (cancellationsSheet) {
+    var cancellationHeaders = getSheetHeaderRow_(cancellationsSheet, 1);
+    ['Name', 'Membership Status', 'Cancel Date'].forEach(function (header) {
+      if (cancellationHeaders.indexOf(header) === -1) {
+        issues.push(location.name + ': Cancellations/Ex-Members is missing header "' + header + '".');
+      }
+    });
+  }
+
+  return {
+    location: location.name,
+    ok: issues.length === 0,
+    issues: issues
+  };
+}
+
+function validateSheetExists_(spreadsheet, sheetName, locationName, label, issues) {
+  if (!spreadsheet.getSheetByName(sheetName)) {
+    issues.push(locationName + ': missing "' + sheetName + '" tab for ' + label + '.');
+  }
+}
+
+function ensureMemberIdColumn_(sheet) {
+  var headers = getSheetHeaderRow_(sheet, MEMBER_HEADERS.length + 1);
+  var existingIndex = headers.indexOf(MEMBER_ID_HEADER);
+  if (existingIndex > -1) {
+    return {
+      index: existingIndex,
+      addedColumn: false
+    };
+  }
+
+  sheet.insertColumnBefore(1);
+  sheet.getRange(1, 1).setValue(MEMBER_ID_HEADER);
+  return {
+    index: 0,
+    addedColumn: true
+  };
+}
+
+function createMemberId_(locationKey) {
+  return String(locationKey || 'member') + '-' + Utilities.getUuid();
+}
+
 function getRequiredSheet_(spreadsheet, sheetName, label) {
   var sheet = spreadsheet.getSheetByName(sheetName);
   if (!sheet) {
-    throw new Error(label + ' sheet not found.');
+    notifyAppIssue_(
+      'Flexx Staff sheet setup issue',
+      'Could not find the "' + sheetName + '" tab for ' + label + ' in spreadsheet ' + spreadsheet.getId() + '.'
+    );
+    throw new Error('Sheet setup issue: missing "' + sheetName + '" tab for ' + label + '. This has been logged for repair.');
   }
   return sheet;
 }
@@ -767,6 +1000,28 @@ function appendHoldRow_(sheet, holdType, rowValues) {
   return appendRow;
 }
 
+function appendUpcomingHoldRow_(sheet, rowValues) {
+  var headers = ensureUpcomingHoldHeaders_(sheet);
+  var appendRow = 2;
+  var row = headers.map(function (header, index) {
+    return index < rowValues.length ? rowValues[index] : '';
+  });
+  sheet.insertRowBefore(appendRow);
+  sheet.getRange(appendRow, 1, 1, headers.length).setValues([row]);
+  return appendRow;
+}
+
+function ensureUpcomingHoldHeaders_(sheet) {
+  var headers = getSheetHeaderRow_(sheet, UPCOMING_HOLD_HEADERS.length).filter(function (header) {
+    return header;
+  });
+  if (!headers.length) {
+    sheet.getRange(1, 1, 1, UPCOMING_HOLD_HEADERS.length).setValues([UPCOMING_HOLD_HEADERS]);
+    return UPCOMING_HOLD_HEADERS.slice();
+  }
+  return headers;
+}
+
 function appendCancellationRow_(sheet, memberHeaders, memberRow, reason, solution, cancelDate) {
   var cancelHeaders = getSheetHeaderRow_(sheet, 1);
   var row = cancelHeaders.map(function (header) {
@@ -833,6 +1088,38 @@ function readHoldSection_(sheet, holdType, memberRowMap) {
   };
 }
 
+function readUpcomingHoldSection_(sheet, memberRowMap) {
+  var headers = ensureUpcomingHoldHeaders_(sheet);
+  var lastRow = sheet.getLastRow();
+  var rows = [];
+  if (lastRow >= 2 && headers.length) {
+    var values = sheet.getRange(2, 1, lastRow - 1, headers.length).getValues();
+    values.forEach(function (row, index) {
+      if (row.every(function (value) { return String(value || '').trim() === ''; })) {
+        return;
+      }
+
+      var fields = {};
+      headers.forEach(function (header, columnIndex) {
+        fields[header] = formatClientValue_(row[columnIndex]);
+      });
+
+      var name = String(fields.Name || '').trim().toLowerCase();
+      rows.push({
+        rowNumber: index + 2,
+        holdType: 'upcoming',
+        memberId: memberRowMap && memberRowMap[name] ? memberRowMap[name] : null,
+        fields: fields
+      });
+    });
+  }
+
+  return {
+    columns: headers,
+    rows: rows
+  };
+}
+
 function getHoldSectionHeaders_(sheet, headerRow, holdType) {
   var columnCount = holdType === 'yellow' ? 8 : 7;
   return sheet.getRange(headerRow, 1, 1, columnCount).getValues()[0].map(function (header) {
@@ -886,6 +1173,15 @@ function isBlankHoldRow_(row) {
   return firstEightValues.every(function (value) {
     return String(value || '').trim() === '';
   });
+}
+
+function isTimelineColumnEmpty_(displayValues, columnIndex) {
+  for (var rowIndex = 2; rowIndex < displayValues.length; rowIndex += 1) {
+    if (String(displayValues[rowIndex][columnIndex] || '').trim()) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function getMemberRowMapByName_(sheet) {
@@ -950,6 +1246,26 @@ function clearHoldRowsForMember_(sheet, name) {
   });
 }
 
+function clearUpcomingHoldRowsForMember_(sheet, name) {
+  var normalizedName = String(name || '').trim().toLowerCase();
+  if (!normalizedName) {
+    return;
+  }
+
+  var headers = ensureUpcomingHoldHeaders_(sheet);
+  var nameIndex = headers.indexOf('Name');
+  if (nameIndex === -1 || sheet.getLastRow() < 2) {
+    return;
+  }
+
+  var values = sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues();
+  for (var index = values.length - 1; index >= 0; index -= 1) {
+    if (String(values[index][nameIndex] || '').trim().toLowerCase() === normalizedName) {
+      sheet.deleteRow(index + 2);
+    }
+  }
+}
+
 function setCancellationRowStatus_(sheet, rowNumber, status) {
   if (!rowNumber || rowNumber < 2 || rowNumber > sheet.getLastRow()) {
     return;
@@ -1000,11 +1316,19 @@ function getSheetHeaderRow_(sheet, minimumColumnCount) {
 }
 
 function assertRequiredHeaders_(headers) {
+  var missingHeaders = [];
   MEMBER_HEADERS.forEach(function (headerName) {
     if (headers.indexOf(headerName) === -1) {
-      throw new Error('Missing required Members header: ' + headerName);
+      missingHeaders.push(headerName);
     }
   });
+  if (missingHeaders.length) {
+    notifyAppIssue_(
+      'Flexx Staff Members header issue',
+      'The Members sheet is missing required header(s): ' + missingHeaders.join(', ') + '. Found headers: ' + headers.join(', ')
+    );
+    throw new Error('Sheet setup issue: Members is missing required header(s): ' + missingHeaders.join(', ') + '. This has been logged for repair.');
+  }
 }
 
 function validateMemberRow_(sheet, rowNumber) {
@@ -1052,6 +1376,17 @@ function isDateInBounds_(value, bounds) {
     return false;
   }
   return date >= bounds.start && date < bounds.end;
+}
+
+function isFutureDate_(date) {
+  if (!(date instanceof Date) || isNaN(date.getTime())) {
+    return false;
+  }
+
+  var now = new Date();
+  var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  var target = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  return target > today;
 }
 
 function normalizeDateValue_(value) {

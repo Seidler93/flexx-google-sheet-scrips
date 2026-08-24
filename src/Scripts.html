@@ -41,6 +41,7 @@
   document.addEventListener('DOMContentLoaded', () => {
     cacheElements();
     bindEvents();
+    syncMobileLayoutClass();
     loadConfig();
   });
 
@@ -167,6 +168,7 @@
     elements.mobileMoveActiveButton.addEventListener('click', moveMobileMemberToActive);
     elements.mobileCancelMemberButton.addEventListener('click', openCancelFromMobileActions);
     window.addEventListener('resize', handleViewportChange);
+    window.addEventListener('orientationchange', handleViewportChange);
 
     document.querySelectorAll('.nav-item[data-view]').forEach((button) => {
       button.addEventListener('click', () => switchView(button.dataset.view));
@@ -341,7 +343,11 @@
   }
 
   function isMobileView() {
-    return window.matchMedia('(max-width: 560px)').matches;
+    return window.matchMedia('(max-width: 700px), (pointer: coarse)').matches;
+  }
+
+  function syncMobileLayoutClass() {
+    document.body.classList.toggle('mobile-layout', isMobileView());
   }
 
   function openMobileMenu() {
@@ -370,6 +376,7 @@
   }
 
   function handleViewportChange() {
+    syncMobileLayoutClass();
     const isMobile = isMobileView();
     if (state.mobileDashboardMode === isMobile) {
       return;

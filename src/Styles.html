@@ -1835,8 +1835,10 @@
 
   @media (max-width: 700px), (pointer: coarse) {
     body {
-      font-size: 16px;
-      padding-top: 72px;
+      font-size: 20px;
+      padding-top: 88px;
+      -webkit-text-size-adjust: 120%;
+      text-size-adjust: 120%;
     }
 
     .mobile-topbar {
@@ -1844,16 +1846,16 @@
       background: var(--sidebar);
       color: #ffffff;
       display: grid;
-      grid-template-columns: 60px minmax(0, 1fr) 60px;
-      height: 72px;
+      grid-template-columns: 72px minmax(0, 1fr) 72px;
+      height: 88px;
       inset: 0 0 auto 0;
-      padding: 10px 14px;
+      padding: 12px 16px;
       position: fixed;
       z-index: 90;
     }
 
     .mobile-topbar strong {
-      font-size: 20px;
+      font-size: 26px;
       justify-self: center;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -1861,9 +1863,9 @@
     }
 
     .mobile-nav-button {
-      font-size: 20px;
-      min-height: 48px;
-      min-width: 48px;
+      font-size: 26px;
+      min-height: 60px;
+      min-width: 60px;
     }
 
     .mobile-drawer-backdrop {
@@ -1886,7 +1888,7 @@
 
     .app-shell {
       display: block;
-      min-height: calc(100vh - 72px);
+      min-height: calc(100vh - 88px);
     }
 
     .sidebar {
@@ -1924,9 +1926,9 @@
     }
 
     .content {
-      height: calc(100vh - 72px);
+      height: calc(100vh - 88px);
       overflow: auto;
-      padding: 14px;
+      padding: 16px;
     }
 
     .topbar {
@@ -1944,7 +1946,7 @@
       padding: 8px 10px;
       position: fixed;
       right: 0;
-      top: 72px;
+      top: 88px;
       z-index: 86;
     }
 
@@ -1963,24 +1965,24 @@
 
     .metric-grid {
       display: grid;
-      gap: 12px;
+      gap: 14px;
       grid-template-columns: repeat(2, minmax(0, 1fr));
-      margin-bottom: 14px;
+      margin-bottom: 16px;
     }
 
     .metric-card {
       border-radius: 8px;
-      min-height: 110px;
-      padding: 14px;
+      min-height: 146px;
+      padding: 18px;
     }
 
     .metric-card span {
-      font-size: 14px;
+      font-size: 18px;
       line-height: 1.25;
     }
 
     .metric-card strong {
-      font-size: 38px;
+      font-size: 52px;
       line-height: 1;
     }
 
@@ -2013,11 +2015,11 @@
       border-radius: 8px;
       cursor: pointer;
       display: grid;
-      gap: 14px;
+      gap: 16px;
       grid-template-columns: minmax(0, 1fr) auto;
-      margin-bottom: 12px;
-      min-height: 102px;
-      padding: 20px 16px;
+      margin-bottom: 14px;
+      min-height: 136px;
+      padding: 26px 18px;
     }
 
     .mobile-dashboard-table td {
@@ -2032,7 +2034,7 @@
     }
 
     .mobile-dashboard-table td[data-label="Name"] {
-      font-size: 20px;
+      font-size: 26px;
       font-weight: 800;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -2040,10 +2042,10 @@
     }
 
     .mobile-status-value {
-      font-size: 15px;
-      min-height: 38px;
-      min-width: 112px;
-      padding: 10px 14px;
+      font-size: 18px;
+      min-height: 48px;
+      min-width: 136px;
+      padding: 13px 16px;
       justify-content: center;
     }
 

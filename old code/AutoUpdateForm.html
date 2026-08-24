@@ -1,0 +1,354 @@
+var cancelsSheetName = "Cancellations/Ex-Members";
+var membersSheetName = "Members";
+var holdsSheetname = "HOLDS";
+var attendanceSheetName = "Attendance"
+var membStatusCol = 2;
+var tempCol = 3;
+var validValues = ["Active", "Green Hold", "Yellow Hold", "Cancel", "Green", "Yellow", "Red"];  // Valid values
+var trialCancel = false;
+
+function updateSheets(e) {
+  var editedSheet = e.source.getActiveSheet();
+  var editedColumn = e.range.getColumn();  // Get the column number of the edited cell
+  var editedRow = e.range.getRow();  // Get the row number of the edited cell
+  var oldValue = e.oldValue;
+
+  // Get the edited value
+  var editedValue = e.value;
+
+  if (oldValue === "Trial") {
+    if (editedValue !== "Cancel") {
+      updateNewMemberDate(editedRow);
+      return;
+    } else if (editedValue === "Cancel") {
+      trialCancel = true;
+    }
+  }
+
+  // Check if the edited value is valid
+  if (!validValues.includes(editedValue)) {
+    return;  // Exit the function if the value is not valid
+  }
+  
+  // Check if the edit was in columns A, B, or D (columns 1, 2, and 4)
+  if (editedColumn === membStatusCol || editedColumn === tempCol) {
+    // Get values from columns A, B, and D in the edited row
+    var values = editedSheet.getRange(editedRow, 1, 1, editedSheet.getLastColumn()).getValues()[0];
+    
+    // Create an object with the updated values
+    var editedMember = {
+      name: values[0],  // Value from column A
+      membershipStatus: values[1],  // Value from column B
+      temperature: values[2],  // Value from column C
+    };
+    
+    if (editedSheet.getName() === membersSheetName || editedSheet.getName() === cancelsSheetName) {
+      updateHoldsPage(editedMember, editedColumn, oldValue);
+    } else if (editedSheet.getName() === holdsSheetname) {
+      updateMembersPage(editedMember, editedColumn, oldValue);
+    }
+  } 
+
+  // If the member has been cancelled move them to the cancelled/ex-members sheeet
+  if (editedValue === "Cancel" && editedColumn === membStatusCol) {
+    cancelMember(editedMember.name);
+  }
+
+  // If the old value was cancel, then the user needs to be activated and added to members sheet
+  if (oldValue === "Cancel") {
+    activateMember(editedMember);
+  }
+}
+
+// Helper function to delete a row by member name in a specific sheet
+function myDeleteRow(sheetName, memberName) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+  var range = sheet.getRange(1, 1, sheet.getLastRow(), 1);
+  var values = range.getValues();
+  
+  for (var i = 0; i < values.length; i++) {
+    if (values[i][0].toString().trim() == memberName) {
+      sheet.deleteRow(i + 1);
+      break;
+    }
+  }
+}
+
+function updateNewMemberDate(memberRow) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  var today = new Date();
+  sheet.getRange(memberRow, 17).setValue(today);
+}
+
+
+function findRow(sheetName, val) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+  var range = sheet.getRange(1, 1, sheet.getLastRow(), 1); // Search the first column
+  var values = range.getValues();
+  
+  for (var i = 0; i < values.length; i++) {
+    if (values[i][0].toString().trim() == val) {
+      var foundRow = i + 3;  // Adjust for 1-based indexing
+      Logger.log("Row found: " + foundRow);
+      return foundRow; // Return the row number where the title was found
+    }
+  }
+  return -1;  // Return -1 if the word is not found
+}
+
+function addMemberToHolds(rowNumber, member, date, oldValue) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(holdsSheetname);
+
+  if (!sheet) {
+    Logger.log("Sheet not found: " + holdsSheetname);
+    return;
+  }
+
+  sheet.insertRowBefore(rowNumber);  // Insert a new row below the specified row
+
+  // Set values in columns A, B, and C of the specified row
+  sheet.getRange(rowNumber, 1).setValue(member.name);  // Set value in column A
+  sheet.getRange(rowNumber, 2).setValue(member.membershipStatus);  // Set value in column B
+  sheet.getRange(rowNumber, 3).setValue(member.temperature);  // Set value in column C// Get the current date
+
+  // Set date to initial hold date or current date
+  if (member.membershipStatus === "Yellow Hold" && oldValue === "Green Hold") {
+    sheet.getRange(rowNumber, 5).setValue(date);
+  } else if ((member.membershipStatus === "Green Hold" || member.membershipStatus === "Yellow Hold") && oldValue != "Green Hold") {
+    // Set the current date 
+    var currentDate = new Date();
+    sheet.getRange(rowNumber, 5).setValue(currentDate);
+    sheet.getRange(rowNumber, 5).setNumberFormat("MM/dd/yyyy");
+  }
+
+  // Set borders for the new row across columns A-M (13 columns)
+  var range = sheet.getRange(rowNumber, 1, 1, 13);  // Range covering columns A-M (1 row, 13 columns)
+  var rightEdge = sheet.getRange(rowNumber, 1, 13, 13);  // Range covering columns M-M (1 row, 13 columns)
+
+  // Top border: Thick solid
+  range.setBorder(
+    true,  // top border
+    null, // left border
+    null, // bottom border
+    null, // right border
+    null, // vertical
+    null, // horizontal
+    null, // color
+    SpreadsheetApp.BorderStyle.SOLID_MEDIUM  // solid border style for top
+  );
+
+  // Bottom and inner borders: Thin solid
+  range.setBorder(
+    null, // top border
+    true,  // left border
+    true,  // bottom border
+    true,  // right border
+    true,  // vertical
+    true, // horizontal
+    null, // color
+    SpreadsheetApp.BorderStyle.SOLID  // solid border style
+  );
+
+  // Top border: Thick solid
+  rightEdge.setBorder(
+    null,  // top border
+    null, // left border
+    null, // bottom border
+    true, // right border
+    null, // vertical
+    null, // horizontal
+    null, // color
+    SpreadsheetApp.BorderStyle.SOLID_MEDIUM  // solid border style for top
+  );
+}
+
+function updateHoldsPage(member, editedColumn, oldValue) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(holdsSheetname);
+  
+  // check if member is already on holds sheet
+  var memRowNumber = findRow(holdsSheetname, member.name);
+  
+  if (memRowNumber > 0) {  // Member exists, update relevant columns
+    if (editedColumn === membStatusCol) { // Check if membership status was changed
+      
+      // Get original hold start date
+      const holdDate = sheet.getRange(memRowNumber - 2, 5).getValue(); 
+
+      myDeleteRow(holdsSheetname, member.name); // Delete old hold status
+      
+      if (member.membershipStatus !== "Active") {
+        var rowNumber = findRow(holdsSheetname, member.membershipStatus);
+        if (rowNumber > 0) {  // Check if a valid row number was returned
+          addMemberToHolds(rowNumber, member, holdDate, oldValue);  // Add or update member in HOLDS sheet
+        }
+      }
+    } else {
+      sheet.getRange(memRowNumber - 2, 3).setValue(member.temperature); // Update temp
+    }
+  } else if (editedColumn === membStatusCol) { // find table to add member too
+    var rowNumber = findRow(holdsSheetname, member.membershipStatus);
+    if (rowNumber > 0) {  // Check if a valid row number was returned
+      addMemberToHolds(rowNumber, member, "");  //, oldValue Add or update member in HOLDS sheet
+    } else {
+      Logger.log("Cannot update membership status.");
+    }
+  }
+}
+
+function updateMembersPage(member, editedColumn, oldValue) {
+  var memberSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(membersSheetName);
+  var holdsSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(holdsSheetname);
+
+  // Find row of member on member sheet
+  var memRowNumber = findRow(membersSheetName, member.name);
+
+  // Update member
+  if (memRowNumber > 0) {  // Member exists, update relevant columns
+    memberSheet.getRange(memRowNumber - 2, 2).setValue(member.membershipStatus); // Update status
+    memberSheet.getRange(memRowNumber - 2, 3).setValue(member.temperature); // Update temp
+  }
+
+  if (editedColumn === membStatusCol) { // find table to add member too
+    var holdRow = findRow(holdsSheetname, member.name);
+    var holdDate = "";
+    
+    if (holdRow > 0) {
+      // Get original hold start date
+      holdDate = holdsSheet.getRange(holdRow - 2, 5).getValue(); 
+    }
+
+    myDeleteRow(holdsSheetname, member.name); // Delete old hold status
+    
+    if (member.membershipStatus !== "Active") {
+      var rowNumber = findRow(holdsSheetname, member.membershipStatus);
+      if (rowNumber > 0) {  // Check if a valid row number was returned
+        addMemberToHolds(rowNumber, member, holdDate, oldValue);  // Add or update member in HOLDS sheet
+      }
+    }
+  }
+}
+
+function cancelMember(memberName) {
+  var cancelsSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(cancelsSheetName);
+  var membersSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(membersSheetName);
+  var attendanceSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(attendanceSheetName);
+
+  // Find the row where that member is in the Members sheet
+  var memberInfoRow = findRow(membersSheetName, memberName);
+  if (memberInfoRow === -1) {
+    Logger.log("Member not found in the Members sheet.");
+    return;
+  }
+  memberInfoRow -= 2;
+  Logger.log("Member found in the members sheet.");
+  
+  // Find the row where that member is in the Attendance sheet
+  var attendanceRow = findRow(attendanceSheetName, memberName);
+  if (attendanceRow === -1) {
+    Logger.log("Member not found in the Attendance sheet.");
+  }
+
+  attendanceRow -= 2;
+  Logger.log("Member found in the attendance sheet.");
+
+  // Get the member's information
+  var memberInfo = membersSheet.getRange(memberInfoRow, 1, 1, 17).getValues();
+
+  // Delete member from members sheet and attendance sheet
+  myDeleteRow(membersSheetName, memberName);
+  myDeleteRow(attendanceSheetName, memberName);
+  
+  // Add a new row in the cancellations sheet
+  cancelsSheet.insertRowBefore(2);  // Insert a new row below title row
+
+  // Set values in the new row
+  cancelsSheet.getRange(2, 1, 1, 17).setValues(memberInfo);
+
+  if (!trialCancel) {
+    // Get the current date
+    var currentDate = new Date();
+    cancelsSheet.getRange(2, 19).setValue(currentDate);
+    cancelsSheet.getRange(2, 19).setNumberFormat("MM/dd/yyyy");
+  }
+  
+  // Check if the member is on the holds sheet and delete them if they are
+  var holdsMemberRow = findRow(holdsSheetname, memberName);
+  if (holdsMemberRow > 0) {
+    holdsMemberRow -= 2;
+    myDeleteRow(holdsSheetname,holdsMemberRow);
+  }
+}
+
+
+function activateMember(member) {
+  var cancelsSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(cancelsSheetName);
+  var membersSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(membersSheetName);
+
+  var memberInfoRow = findRow(cancelsSheetName, member.name);
+  if (memberInfoRow === -1) {
+    Logger.log("Member not found in the cancels sheet.");
+    return;
+  }
+
+  memberInfoRow -= 2;
+
+  Logger.log("Member found in the cancels sheet at row: " + memberInfoRow);
+
+  // Get the member's information
+  try {
+    var memberInfo = cancelsSheet.getRange(memberInfoRow, 1, 1, 17).getValues();
+    Logger.log("Member information retrieved successfully: " + JSON.stringify(memberInfo));
+  } catch (e) {
+    Logger.log("Error retrieving member info: " + e.message);
+    return;
+  }
+  
+  // Remove member from cancel sheet
+  removeMemberFromCancelSheet(memberInfoRow);
+
+  // Add a new row in the members sheet
+  try {
+    membersSheet.insertRowBefore(2);  // Insert a new row below title row
+    Logger.log("New row inserted in Members sheet at row 2");
+  } catch (e) {
+    Logger.log("Error inserting new row: " + e.message);
+    return;
+  }
+
+  // Set values in the new row
+  try {
+    membersSheet.getRange(2, 1, 1, 17).setValues(memberInfo);
+    Logger.log("Member info set in the new row successfully");
+
+    membersSheet.getRange(2, 2).setValue(member.membershipStatus);
+    Logger.log("Membership status updated: " + member.membershipStatus);
+
+    membersSheet.getRange(2, 15).setValue(true);  // Assuming column 15 is a checkbox column
+    Logger.log("Checkbox set to TRUE in column 15");
+  } catch (e) {
+    Logger.log("Error setting values in new row: " + e.message);
+    return;
+  }
+
+  // Get the current date
+  var currentDate = new Date();
+  Logger.log("Current date: " + currentDate);
+
+  // Set the current date in the second row, column Q (17th column) with formatting
+  try {
+    membersSheet.getRange(2, 17).setValue(currentDate);
+    membersSheet.getRange(2, 17).setNumberFormat("MM/dd/yyyy");
+    Logger.log("Date set in column Q (17) and formatted");
+  } catch (e) {
+    Logger.log("Error setting date: " + e.message);
+    return;
+  }
+
+  Logger.log("Member activation process completed successfully!");
+}
+
+function removeMemberFromCancelSheet(row) {
+  var cancelsSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(cancelsSheetName);
+  cancelsSheet.deleteRow(row);
+}
+

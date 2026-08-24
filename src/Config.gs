@@ -14,6 +14,7 @@ var FLEXX_CONFIG = (function () {
       spreadsheetId: '1kzejYtuoGm8FSHGeWsL-k3dj5R-hcPikhZFN6o9-jtg',
       sheets: {
         members: 'Members',
+        attendance: 'Attendance',
         holds: 'HOLDS',
         upcomingHolds: 'Upcoming Holds',
         cancellations: 'Cancellations/Ex-Members',
@@ -25,6 +26,7 @@ var FLEXX_CONFIG = (function () {
       spreadsheetId: '1giWziogztj9JriRn1c1LK8X-dYBMGGuIikjgWBo2mlc',
       sheets: {
         members: 'Members',
+        attendance: 'Attendance',
         holds: 'HOLDS',
         upcomingHolds: 'Upcoming Holds',
         cancellations: 'Cancellations/Ex-Members',

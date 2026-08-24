@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <style>
+      /* General page styles */
+      body {
+        font-family: Arial, sans-serif;
+        background-color: #f4f4f4;
+        margin: 0;
+        padding: 20px;
+        text-align: center;
+      }
+
+      /* Form container */
+      .form-container {
+        max-width: 400px;
+        background: #fff;
+        padding: 30px;
+        border-radius: 10px;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        margin: 0 auto;
+        text-align: left;
+      }
+
+      /* Header styles */
+      h3 {
+        color: #333;
+        text-align: center;
+        margin-bottom: 20px;
+      }
+
+      /* Form row for label above input fields */
+      .form-row {
+        display: flex;
+        flex-direction: column;
+        margin-bottom: 20px;
+      }
+
+      /* Labels styling */
+      label {
+        font-weight: bold;
+        color: #555;
+        margin-bottom: 5px;
+        font-size: 14px;
+      }
+
+      /* Inputs and selects */
+      input, select {
+        padding: 12px;
+        border: 1px solid #ccc;
+        border-radius: 5px;
+        box-sizing: border-box;
+        font-size: 16px;
+        width: 100%;
+      }
+
+      /* Placeholder color */
+      input::placeholder {
+        color: #aaa;
+        font-size: 14px;
+      }
+
+      /* Button styles */
+      button {
+        width: 100%;
+        padding: 15px;
+        background-color: #007BFF;
+        border: none;
+        border-radius: 5px;
+        color: white;
+        font-size: 18px;
+        cursor: pointer;
+        transition: background-color 0.3s ease;
+      }
+
+      button:hover {
+        background-color: #0056b3;
+      }
+
+      /* Confirmation message styles */
+      #confirmationMessage {
+        font-size: 20px;
+        font-weight: bold;
+        color: green;
+        margin-top: 20px;
+        text-align: center;
+        display: none;
+      }
+
+      /* Loader styles */
+      #loadingScreen {
+        display: none;
+        text-align: center;
+        font-size: 18px;
+        color: #555;
+        margin-top: 50px;
+      }
+
+      .loader {
+        border: 6px solid #f3f3f3;
+        border-top: 6px solid #007BFF;
+        border-radius: 50%;
+        width: 50px;
+        height: 50px;
+        animation: spin 1s linear infinite;
+        margin: 20px auto;
+      }
+
+      /* Keyframes animation for spinner */
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+
+      /* Utility classes */
+      .hidden {
+        display: none;
+      }
+
+      /* The switch - the box around the slider */
+      .switch {
+        font-size: 17px;
+        position: relative;
+        display: inline-block;
+        width: 3.5em;
+        height: 2em;
+      }
+
+      /* Hide default HTML checkbox */
+      .switch input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+      }
+
+      /* The slider */
+      .slider {
+        position: absolute;
+        cursor: pointer;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: #fff;
+        border: 1px solid #adb5bd;
+        transition: .4s;
+        border-radius: 30px;
+      }
+
+      .slider:before {
+        position: absolute;
+        content: "";
+        height: 1.4em;
+        width: 1.4em;
+        border-radius: 20px;
+        left: 0.27em;
+        bottom: 0.25em;
+        background-color: #adb5bd;
+        transition: .4s;
+      }
+
+      input:checked + .slider {
+        background-color: #007bff;
+        border: 1px solid #007bff;
+      }
+
+      input:focus + .slider {
+        box-shadow: 0 0 1px #007bff;
+      }
+
+      input:checked + .slider:before {
+        transform: translateX(1.4em);
+        background-color: #fff;
+      }
+
+      #referralMemberDiv input {
+        width: 100%;
+        padding: 12px;
+        border: 1px solid #ccc;
+        border-radius: 5px;
+        box-sizing: border-box;
+        font-size: 16px;
+      }
+
+      #referralMemberDiv input::placeholder {
+        color: #aaa;
+        font-size: 14px;
+      }
+
+    </style>
+  </head>
+  <body>
+    <div class="form-container">
+      <h3>Add New Member</h3>
+    
+      <div id="firstNameError" style="color: red; font-size: 14px;"></div>
+      <div class="form-row">
+        <input type="text" id="firstName" placeholder="First Name" required>
+      </div>
+
+
+      <div id="lastNameError" style="color: red; font-size: 14px;"></div>
+      <div class="form-row">
+        <input type="text" id="lastName" placeholder="Last Name" required>
+      </div>
+
+      <div class="form-row">
+        <label for="trial">Trial Period:</label>
+        <div class="slider-div">
+          <label class="switch">
+            <input type="checkbox" id="trial" onchange="toggleTrialDate()">
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+
+      <div class="form-row hidden" id="trialDateDiv">
+        <label for="trialDate">End Of Trial Date:</label>
+        <input type="date" id="trialDate" required>
+      </div> 
+
+      <div class="form-row">
+        <label for="daysPerWeek">Days Per Week:</label>
+        <select id="daysPerWeek" required>
+          <option value="1x/Week">1x/Week</option>
+          <option value="2x/Week">2x/Week</option>
+          <option value="3x/Week">3x/Week</option>
+          <option value="4x/Week">4x/Week</option>
+        </select>
+      </div>
+    
+      <div class="form-row">
+        <label for="paymentOption">Payment Option:</label>
+        <select id="paymentOption">
+          <option value="Monthly">Monthly</option>
+          <option value="Weekly">Weekly</option>
+          <option value="Bi-weekly">Bi-weekly</option>
+          <option value="Punchcard">Punchcard</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
+    
+      <div class="form-row">
+        <label for="pricePoint">Price Point:</label>
+        <input type="number" id="pricePoint" required>
+      </div>
+    
+      <div class="form-row">
+        <label for="startDate">Start Date:</label>
+        <input type="date" id="startDate" required>
+      </div>
+
+      <div id="startDateError" style="color: red; font-size: 14px;"></div>
+
+      <div class="form-row">
+        <label for="referral">Referral:</label>
+        <div class="slider-div">
+          <label class="switch">
+            <input type="checkbox" id="referral" onchange="toggleReferralMember()">
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+    
+      <div class="form-row hidden" id="referralMemberDiv">
+        <input type="text" id="referralMember" placeholder="Referral Member">
+      </div>      
+    
+      <div class="form-row">
+        <label for="recurring">recurring:</label>
+        <div>
+          <label class="switch">
+            <input type="checkbox" id="recurring">
+            <span class="slider round"></span>
+          </label>
+        </div>
+      </div>
+    
+      <div class="form-row">
+        <textarea id="notes" placeholder="Notes"></textarea>
+      </div>
+    
+      <button onclick="submitForm()">Add Member</button>
+    </div>
+    
+    <div id="loadingScreen">
+      <div class="loader"></div>
+      <p>Processing... Please wait.</p>
+    </div>
+    
+    <div id="confirmationMessage">Member added successfully!</div>
+
+    <script>
+      function toggleReferralMember() {
+        var referralChecked = document.getElementById('referral').checked;
+        var referralMemberDiv = document.getElementById('referralMemberDiv');
+
+        if (referralChecked) {
+          referralMemberDiv.classList.remove('hidden');
+        } else {
+          referralMemberDiv.classList.add('hidden');
+          document.getElementById('referralMember').value = ''; // Clear value if hidden
+        }
+      }
+
+      function toggleTrialDate() {
+        var trialChecked = document.getElementById('trial').checked;
+        var trialDateDiv = document.getElementById('trialDateDiv');
+
+        if (trialChecked) {
+          trialDateDiv.classList.remove('hidden');
+        } else {
+          trialDateDiv.classList.add('hidden');
+          document.getElementById('trialDate').value = ''; // Clear value if hidden
+        }
+      }
+
+      function checkTrial() {
+        var trialChecked = document.getElementById('trial').checked;
+
+        if (trialChecked) {
+          return "Trial"
+        } else {
+          return "Active"
+        }
+      }
+
+      function getNotes() {
+        var trialDate = document.getElementById('trialDate').value;
+        var notes = document.getElementById('notes').value;
+
+        if (trialDate) {
+            return "End of trial, " + trialDate + ". " + notes;
+        } else {
+            return notes;
+        }
+      }
+
+      function submitForm() {
+        var startDate = document.getElementById('startDate').value;
+        var firstName = document.getElementById('firstName').value;
+        var lastName = document.getElementById('lastName').value;
+        var startDateField = document.getElementById('startDate');
+        var firstNameField = document.getElementById('firstName');
+        var lastNameField = document.getElementById('lastName');
+
+        // Initialize a flag to track validation status
+        var isValid = true;
+
+        // Validate start date
+        if (!startDate) {
+          startDateField.style.border = "2px solid red";
+          document.getElementById('startDateError').innerText = "Start date is required!";
+          isValid = false;  // Set flag to false if validation fails
+        } else {
+          startDateField.style.border = "";
+          document.getElementById('startDateError').innerText = "";
+        }
+
+        // Validate first name
+        if (!firstName) {
+          firstNameField.style.border = "2px solid red";
+          document.getElementById('firstNameError').innerText = "First name is required!";
+          isValid = false;
+        } else {
+          firstNameField.style.border = "";
+          document.getElementById('firstNameError').innerText = "";
+        }
+
+        // Validate last name
+        if (!lastName) {
+          lastNameField.style.border = "2px solid red";
+          document.getElementById('lastNameError').innerText = "Last name is required!";
+          isValid = false;
+        } else {
+          lastNameField.style.border = "";
+          document.getElementById('lastNameError').innerText = "";
+        }
+
+        // Stop form submission if any validation failed
+        if (!isValid) {
+          return;
+        }
+
+        // Show loading screen and hide form
+        document.querySelector('.form-container').style.display = 'none';
+        document.getElementById('loadingScreen').style.display = 'block';
+
+        var formData = {
+          firstName: document.getElementById('firstName').value,
+          lastName: document.getElementById('lastName').value,
+          status: checkTrial(),
+          daysPerWeek: document.getElementById('daysPerWeek').value,
+          paymentOption: document.getElementById('paymentOption').value,
+          pricePoint: document.getElementById('pricePoint').value,
+          startDate: document.getElementById('startDate').value,
+          referral: document.getElementById('referral').checked,
+          referralMember: document.getElementById('referralMember').value || "",
+          recurring: document.getElementById('recurring').checked,
+          notes: getNotes()
+        };
+
+        google.script.run
+          .withSuccessHandler(function(response) {
+            document.getElementById('loadingScreen').style.display = 'none'; // Hide loading
+            document.getElementById('confirmationMessage').innerText = response;
+            document.getElementById('confirmationMessage').style.display = 'block';
+          })
+          .addMember(formData);
+      }
+    </script>
+  </body>
+</html>

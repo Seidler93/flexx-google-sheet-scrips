@@ -10,13 +10,18 @@
     cancellationsColumns: [],
     cancellationsRows: [],
     visibleCancellationsColumns: [],
+    attendanceData: null,
     dataTimeline: null,
     holdsData: null,
     pendingHoldSaves: {},
+    pendingCancellationSaves: {},
+    pendingDataSaves: {},
     viewCache: {},
     loadingViews: {},
     globalSearchTimer: null,
     globalSearchRequestId: 0,
+    mobileActionsMemberId: null,
+    mobileDashboardMode: null,
     dashboardSort: {
       column: 'Name',
       direction: 'asc'
@@ -41,6 +46,11 @@
 
   function cacheElements() {
     elements.locationSelect = document.getElementById('locationSelect');
+    elements.mobileMenuButton = document.getElementById('mobileMenuButton');
+    elements.mobileCloseMenuButton = document.getElementById('mobileCloseMenuButton');
+    elements.mobileDrawerBackdrop = document.getElementById('mobileDrawerBackdrop');
+    elements.mobileSearchButton = document.getElementById('mobileSearchButton');
+    elements.mobilePageTitle = document.getElementById('mobilePageTitle');
     elements.locationLabel = document.getElementById('locationLabel');
     elements.globalStatus = document.getElementById('globalStatus');
     elements.globalSearchInput = document.getElementById('globalSearchInput');
@@ -49,6 +59,7 @@
     elements.pageTitle = document.getElementById('pageTitle');
     elements.dashboardView = document.getElementById('dashboardView');
     elements.membersView = document.getElementById('membersView');
+    elements.attendanceView = document.getElementById('attendanceView');
     elements.holdsView = document.getElementById('holdsView');
     elements.cancellationsView = document.getElementById('cancellationsView');
     elements.dataView = document.getElementById('dataView');
@@ -66,6 +77,9 @@
     elements.cancellationsColumnMenuButton = document.getElementById('cancellationsColumnMenuButton');
     elements.cancellationsColumnMenu = document.getElementById('cancellationsColumnMenu');
     elements.cancellationsTable = document.getElementById('cancellationsTable');
+    elements.attendanceTitle = document.getElementById('attendanceTitle');
+    elements.attendanceMeta = document.getElementById('attendanceMeta');
+    elements.attendanceTable = document.getElementById('attendanceTable');
     elements.dataTimelineTitle = document.getElementById('dataTimelineTitle');
     elements.dataTimelineMeta = document.getElementById('dataTimelineMeta');
     elements.dataTimelineTable = document.getElementById('dataTimelineTable');
@@ -126,10 +140,34 @@
     elements.addNotesInput = document.getElementById('addNotesInput');
     elements.addMemberModalError = document.getElementById('addMemberModalError');
     elements.submitAddMemberButton = document.getElementById('submitAddMemberButton');
+    elements.mobileMemberActions = document.getElementById('mobileMemberActions');
+    elements.mobileActionName = document.getElementById('mobileActionName');
+    elements.mobileActionStatus = document.getElementById('mobileActionStatus');
+    elements.mobileMoveActiveButton = document.getElementById('mobileMoveActiveButton');
+    elements.mobileHoldButton = document.getElementById('mobileHoldButton');
+    elements.mobileEditInfoButton = document.getElementById('mobileEditInfoButton');
+    elements.mobileCancelMemberButton = document.getElementById('mobileCancelMemberButton');
+    elements.mobileCloseActionsButton = document.getElementById('mobileCloseActionsButton');
     elements.inlineDatePicker = null;
   }
 
   function bindEvents() {
+    elements.mobileMenuButton.addEventListener('click', openMobileMenu);
+    elements.mobileCloseMenuButton.addEventListener('click', closeMobileMenu);
+    elements.mobileDrawerBackdrop.addEventListener('click', closeMobileMenu);
+    elements.mobileSearchButton.addEventListener('click', toggleMobileSearch);
+    elements.mobileMemberActions.addEventListener('click', (event) => {
+      if (event.target === elements.mobileMemberActions) {
+        closeMobileMemberActions();
+      }
+    });
+    elements.mobileCloseActionsButton.addEventListener('click', closeMobileMemberActions);
+    elements.mobileEditInfoButton.addEventListener('click', openSelectedMemberFromMobileActions);
+    elements.mobileHoldButton.addEventListener('click', openHoldFromMobileActions);
+    elements.mobileMoveActiveButton.addEventListener('click', moveMobileMemberToActive);
+    elements.mobileCancelMemberButton.addEventListener('click', openCancelFromMobileActions);
+    window.addEventListener('resize', handleViewportChange);
+
     document.querySelectorAll('.nav-item[data-view]').forEach((button) => {
       button.addEventListener('click', () => switchView(button.dataset.view));
     });
@@ -244,7 +282,7 @@
     elements.locationLabel.textContent = location ? location.name : '';
     elements.addMemberButton.disabled = isMasterLocation();
     elements.globalSearchInput.disabled = isMasterLocation();
-    elements.globalSearchInput.placeholder = isMasterLocation() ? 'Select a location to search' : 'Search members or cancels';
+    elements.globalSearchInput.placeholder = isMasterLocation() ? 'Select a location to search' : 'Search members';
     if (isMasterLocation()) {
       elements.globalSearchInput.value = '';
       clearGlobalSearchResults();
@@ -268,11 +306,15 @@
     }
     state.activeView = view;
     elements.pageTitle.textContent = getViewTitle(view);
+    elements.mobilePageTitle.textContent = getViewTitle(view);
+    closeMobileMenu();
+    closeMobileSearch();
     document.querySelectorAll('.nav-item[data-view]').forEach((button) => {
       button.classList.toggle('active', button.dataset.view === view);
     });
     elements.dashboardView.classList.toggle('active', view === 'dashboard');
     elements.membersView.classList.toggle('active', view === 'members');
+    elements.attendanceView.classList.toggle('active', view === 'attendance');
     elements.holdsView.classList.toggle('active', view === 'holds');
     elements.cancellationsView.classList.toggle('active', view === 'cancellations');
     elements.dataView.classList.toggle('active', view === 'data');
@@ -286,6 +328,9 @@
     if (view === 'holds') {
       return 'Holds';
     }
+    if (view === 'attendance') {
+      return 'Attendance';
+    }
     if (view === 'cancellations') {
       return 'Cancellations';
     }
@@ -295,9 +340,136 @@
     return 'Dashboard';
   }
 
+  function isMobileView() {
+    return window.matchMedia('(max-width: 560px)').matches;
+  }
+
+  function openMobileMenu() {
+    document.body.classList.add('mobile-menu-open');
+    elements.mobileDrawerBackdrop.hidden = false;
+  }
+
+  function closeMobileMenu() {
+    document.body.classList.remove('mobile-menu-open');
+    elements.mobileDrawerBackdrop.hidden = true;
+  }
+
+  function toggleMobileSearch() {
+    const isOpen = document.body.classList.toggle('mobile-search-open');
+    if (isOpen) {
+      window.setTimeout(() => elements.globalSearchInput.focus(), 0);
+    } else {
+      elements.globalSearchInput.blur();
+      clearGlobalSearchResults();
+    }
+  }
+
+  function closeMobileSearch() {
+    document.body.classList.remove('mobile-search-open');
+    clearGlobalSearchResults();
+  }
+
+  function handleViewportChange() {
+    const isMobile = isMobileView();
+    if (state.mobileDashboardMode === isMobile) {
+      return;
+    }
+    state.mobileDashboardMode = isMobile;
+    if (state.activeView === 'dashboard' && state.dashboardRows.length && !isMasterLocation()) {
+      renderDashboardTable();
+    }
+    if (!isMobile) {
+      closeMobileMenu();
+      closeMobileSearch();
+      closeMobileMemberActions();
+    }
+  }
+
+  function openMobileMemberActions(member) {
+    if (!member || !member.memberId) {
+      return;
+    }
+    state.mobileActionsMemberId = member.memberId;
+    const status = member.fields['Membership Status'] || '';
+    const normalizedStatus = String(status).trim().toLowerCase();
+    const isHold = normalizedStatus === 'green hold' || normalizedStatus === 'yellow hold';
+    elements.mobileActionName.textContent = member.fields.Name || 'Member';
+    elements.mobileActionStatus.textContent = status;
+    elements.mobileActionStatus.className = `mobile-action-status ${getStatusClass(normalizedStatus)}`;
+    elements.mobileMoveActiveButton.hidden = !isHold;
+    elements.mobileHoldButton.textContent = isHold ? 'Edit Hold' : 'Put on Hold';
+    elements.mobileCancelMemberButton.hidden = normalizedStatus === 'cancel';
+    elements.mobileMemberActions.hidden = false;
+  }
+
+  function closeMobileMemberActions() {
+    elements.mobileMemberActions.hidden = true;
+  }
+
+  function openSelectedMemberFromMobileActions() {
+    const memberId = state.mobileActionsMemberId;
+    closeMobileMemberActions();
+    if (memberId) {
+      loadMember(memberId);
+    }
+  }
+
+  function openHoldFromMobileActions() {
+    const memberId = state.mobileActionsMemberId;
+    closeMobileMemberActions();
+    if (!memberId) {
+      return;
+    }
+    loadMemberForAction(memberId, (member) => {
+      const status = String(member.fields['Membership Status'] || '').trim();
+      const defaultStatus = status === 'Yellow Hold' ? 'Yellow Hold' : 'Green Hold';
+      openHoldModal(defaultStatus);
+    });
+  }
+
+  function openCancelFromMobileActions() {
+    const memberId = state.mobileActionsMemberId;
+    closeMobileMemberActions();
+    if (memberId) {
+      loadMemberForAction(memberId, openCancelModal);
+    }
+  }
+
+  function moveMobileMemberToActive() {
+    const memberId = state.mobileActionsMemberId;
+    if (!memberId || state.saving) {
+      return;
+    }
+
+    state.saving = true;
+    elements.mobileMoveActiveButton.disabled = true;
+    setStatus('Moving member to active...');
+    google.script.run
+      .withSuccessHandler((member) => {
+        state.saving = false;
+        state.selectedMember = member;
+        closeMobileMemberActions();
+        elements.mobileMoveActiveButton.disabled = false;
+        clearViewCaches();
+        loadActiveViewData();
+        setStatus('Member moved to active.');
+      })
+      .withFailureHandler((error) => {
+        state.saving = false;
+        elements.mobileMoveActiveButton.disabled = false;
+        showError(error);
+      })
+      .setMemberStatus(state.locationKey, {
+        memberId: memberId,
+        status: 'Active'
+      });
+  }
+
   function loadActiveViewData() {
     if (state.activeView === 'holds') {
       loadHolds();
+    } else if (state.activeView === 'attendance') {
+      loadAttendance();
     } else if (state.activeView === 'cancellations') {
       loadCancellations();
     } else if (state.activeView === 'data') {
@@ -429,6 +601,149 @@
     elements.masterSnapshotTable.className = 'table-wrap';
     elements.masterSnapshotTable.innerHTML = '';
     elements.masterSnapshotTable.appendChild(table);
+  }
+
+  function loadAttendance() {
+    const requestLocationKey = state.locationKey;
+    const cachedData = getCachedViewData('attendance');
+    if (cachedData) {
+      renderAttendance(cachedData);
+      setStatus('Refreshing attendance...');
+    } else {
+      setStatus('Loading attendance...');
+      setAttendanceLoading();
+    }
+    if (state.loadingViews.attendance) {
+      return;
+    }
+    state.loadingViews.attendance = true;
+    google.script.run
+      .withSuccessHandler((data) => {
+        if (requestLocationKey !== state.locationKey) {
+          return;
+        }
+        state.loadingViews.attendance = false;
+        setCachedViewData('attendance', data);
+        renderAttendance(data);
+        setStatus('');
+      })
+      .withFailureHandler((error) => {
+        if (requestLocationKey !== state.locationKey) {
+          return;
+        }
+        state.loadingViews.attendance = false;
+        showError(error);
+      })
+      .getAttendanceData(state.locationKey);
+  }
+
+  function setAttendanceLoading() {
+    elements.attendanceTitle.textContent = 'Attendance';
+    elements.attendanceMeta.textContent = '';
+    elements.attendanceTable.className = 'table-wrap empty-state';
+    elements.attendanceTable.textContent = 'Loading attendance...';
+  }
+
+  function renderAttendance(data) {
+    state.attendanceData = data;
+    elements.attendanceTitle.textContent = `${data.locationName || 'Location'} Attendance`;
+    elements.attendanceMeta.textContent = data.periods && data.periods.length
+      ? `Last ${data.periods.length} weeks`
+      : '';
+
+    if (!data.rows || !data.rows.length || !data.periods || !data.periods.length) {
+      elements.attendanceTable.className = 'table-wrap empty-state';
+      elements.attendanceTable.textContent = 'No attendance data found.';
+      return;
+    }
+
+    const table = document.createElement('table');
+    table.className = 'member-table attendance-table';
+    const thead = document.createElement('thead');
+    const topRow = document.createElement('tr');
+    ['Member', 'Status', 'Flag'].forEach((label) => {
+      const th = document.createElement('th');
+      th.rowSpan = 2;
+      th.textContent = label;
+      topRow.appendChild(th);
+    });
+    data.periods.forEach((period) => {
+      const th = document.createElement('th');
+      th.colSpan = 3;
+      th.textContent = period.label;
+      topRow.appendChild(th);
+    });
+    thead.appendChild(topRow);
+
+    const subRow = document.createElement('tr');
+    data.periods.forEach(() => {
+      ['Att', 'Exp', 'Net'].forEach((label) => {
+        const th = document.createElement('th');
+        th.className = 'attendance-subhead';
+        th.textContent = label;
+        subRow.appendChild(th);
+      });
+    });
+    thead.appendChild(subRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    data.rows.forEach((entry) => {
+      const row = document.createElement('tr');
+      row.className = `attendance-row attendance-${entry.category}`;
+      if (entry.memberId) {
+        row.tabIndex = 0;
+        row.addEventListener('click', () => loadMember(entry.memberId));
+        row.addEventListener('keydown', (event) => {
+          if (event.key === 'Enter') {
+            loadMember(entry.memberId);
+          }
+        });
+      }
+
+      appendAttendanceTextCell(row, 'Member', entry.name, 'attendance-name-cell');
+      const statusCell = document.createElement('td');
+      statusCell.dataset.label = 'Status';
+      const status = entry.status || '';
+      const statusPill = document.createElement('span');
+      statusPill.className = `status-pill ${getStatusClass(String(status).trim().toLowerCase())}`;
+      statusPill.textContent = status || '-';
+      statusCell.appendChild(statusPill);
+      row.appendChild(statusCell);
+      appendAttendanceTextCell(row, 'Flag', entry.categoryLabel, 'attendance-category-cell');
+
+      entry.weeks.forEach((week) => {
+        appendAttendanceNumberCell(row, 'Att', week.attended, week.state);
+        appendAttendanceNumberCell(row, 'Exp', week.expected, week.state);
+        appendAttendanceNumberCell(row, 'Net', formatSignedNumber(week.net), week.state, week.net);
+      });
+      tbody.appendChild(row);
+    });
+    table.appendChild(tbody);
+
+    elements.attendanceTable.className = 'table-wrap attendance-table-wrap';
+    elements.attendanceTable.innerHTML = '';
+    elements.attendanceTable.appendChild(table);
+  }
+
+  function appendAttendanceTextCell(row, label, value, className) {
+    const cell = document.createElement('td');
+    cell.dataset.label = label;
+    cell.className = className || '';
+    cell.textContent = value || '';
+    row.appendChild(cell);
+  }
+
+  function appendAttendanceNumberCell(row, label, value, stateClass, netValue) {
+    const cell = document.createElement('td');
+    cell.dataset.label = label;
+    cell.className = `attendance-number-cell attendance-week-${stateClass || 'met'}`;
+    if (label === 'Net') {
+      cell.classList.toggle('attendance-net-negative', Number(netValue) < 0);
+      cell.classList.toggle('attendance-net-positive', Number(netValue) > 0);
+    }
+    cell.textContent = value;
+    row.appendChild(cell);
   }
 
   function loadHolds() {
@@ -626,8 +941,8 @@
       appendDataTimelineCell(row, 'Metric', entry.metric, true);
       appendDataTimelineCell(row, 'Goal', entry.goal, false);
       appendDataTimelineCell(row, 'Average', entry.average, false);
-      entry.values.forEach((value) => {
-        appendDataTimelineCell(row, 'Value', value, false);
+      entry.values.forEach((value, valueIndex) => {
+        appendDataTimelineCell(row, 'Value', value, false, entry, data.periods[valueIndex]);
       });
       tbody.appendChild(row);
     });
@@ -638,14 +953,69 @@
     elements.dataTimelineTable.appendChild(table);
   }
 
-  function appendDataTimelineCell(row, label, value, isMetric) {
+  function appendDataTimelineCell(row, label, value, isMetric, entry, period) {
     const cell = document.createElement('td');
     cell.dataset.label = label;
     if (isMetric) {
       cell.className = 'data-metric-cell';
     }
+    if (entry && entry.metric === 'Instagram Posts' && period) {
+      const input = document.createElement('input');
+      const pendingKey = getDataCellKey(entry.metric, period.startLabel);
+      input.className = 'table-control data-edit-input';
+      input.type = 'number';
+      input.min = '0';
+      input.step = '1';
+      input.value = value || '';
+      input.disabled = Boolean(state.pendingDataSaves[pendingKey]);
+      cell.classList.toggle('pending-cell', Boolean(state.pendingDataSaves[pendingKey]));
+      input.addEventListener('blur', () => {
+        if (input.value !== String(value || '')) {
+          saveDataTimelineMetric(entry.metric, period.startLabel, input.value);
+        }
+      });
+      input.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+          input.blur();
+        }
+      });
+      cell.appendChild(input);
+      row.appendChild(cell);
+      return;
+    }
     cell.textContent = value || '';
     row.appendChild(cell);
+  }
+
+  function saveDataTimelineMetric(metric, periodLabel, value) {
+    const pendingKey = getDataCellKey(metric, periodLabel);
+    if (state.pendingDataSaves[pendingKey]) {
+      setStatus('Still saving that cell...');
+      return;
+    }
+    state.pendingDataSaves[pendingKey] = true;
+    setStatus('Saving data...');
+    google.script.run
+      .withSuccessHandler((data) => {
+        delete state.pendingDataSaves[pendingKey];
+        setCachedViewData('data', data);
+        renderDataTimeline(data);
+        setStatus('Data updated.');
+      })
+      .withFailureHandler((error) => {
+        delete state.pendingDataSaves[pendingKey];
+        renderDataTimeline(state.dataTimeline);
+        showError(error);
+      })
+      .updateDataTimelineMetric(state.locationKey, {
+        metric: metric,
+        periodLabel: periodLabel,
+        value: value
+      });
+  }
+
+  function getDataCellKey(metric, periodLabel) {
+    return `${metric}:${periodLabel}`;
   }
 
   function prefetchHolds() {
@@ -732,6 +1102,15 @@
 
     const table = document.createElement('table');
     table.className = 'member-table hold-table';
+
+    const colgroup = document.createElement('colgroup');
+    columns.forEach((column) => {
+      const col = document.createElement('col');
+      col.className = getHoldColumnClass(column);
+      colgroup.appendChild(col);
+    });
+    table.appendChild(colgroup);
+
     const thead = document.createElement('thead');
     const headerRow = document.createElement('tr');
     columns.forEach((column) => {
@@ -760,6 +1139,26 @@
     container.appendChild(table);
   }
 
+  function getHoldColumnClass(column) {
+    const normalized = String(column || '').trim().toLowerCase();
+    if (normalized === 'name') {
+      return 'hold-col-name';
+    }
+    if (normalized === 'membership status') {
+      return 'hold-col-status';
+    }
+    if (normalized === 'membership age') {
+      return 'hold-col-age';
+    }
+    if (normalized === 'reason') {
+      return 'hold-col-reason';
+    }
+    if (normalized === 'end of 6-week nurture') {
+      return 'hold-col-end-nurture';
+    }
+    return 'hold-col-date';
+  }
+
   function renderHoldCell(cell, column, entry) {
     const value = getFieldValue(entry.fields, column);
     const isPending = isHoldCellPending(entry, column);
@@ -778,6 +1177,10 @@
             loadMember(entry.memberId);
           }
         });
+        return;
+      }
+      if (isHoldDateColumn(column)) {
+        renderHoldDateCell(cell, column, entry, value, isPending);
         return;
       }
       renderDashboardCell(cell, column, value);
@@ -799,8 +1202,8 @@
 
     if (column === 'Membership Status') {
       const options = entry.holdType === 'green'
-        ? ['Green Hold', 'Active', 'Yellow Hold', 'Cancel']
-        : ['Yellow Hold', 'Active', 'Cancel'];
+        ? ['Green Hold', 'Active', 'Trial', 'Yellow Hold', 'Cancel']
+        : ['Yellow Hold', 'Active', 'Trial', 'Cancel'];
       const select = createStatusSelect(value, options, () => {
         saveHoldEntry(entry, { 'Membership Status': select.value });
       });
@@ -823,39 +1226,47 @@
       return;
     }
 
-    if (column === 'Start Date' || column === 'Next Contact' || column === 'Return Date?' || column === 'End of 6-week Nurture') {
-      const wrapper = document.createElement('div');
-      wrapper.className = 'date-cell-control';
-      const pickerButton = document.createElement('button');
-      pickerButton.className = 'date-picker-button';
-      pickerButton.type = 'button';
-      pickerButton.disabled = isPending;
-      pickerButton.textContent = value || 'Select date';
-      pickerButton.addEventListener('click', () => {
-        openInlineDatePicker(entry, column, value, pickerButton);
-      });
-      wrapper.appendChild(pickerButton);
-
-      if (column === 'Next Contact' || column === 'Return Date?' || column === 'End of 6-week Nurture') {
-        const clearButton = document.createElement('button');
-        clearButton.className = 'date-clear-button';
-        clearButton.type = 'button';
-        clearButton.disabled = isPending;
-        clearButton.setAttribute('aria-label', `Clear ${column}`);
-        clearButton.textContent = 'x';
-        clearButton.addEventListener('click', () => {
-          const fieldUpdate = {};
-          fieldUpdate[column] = '-';
-          saveHoldEntry(entry, fieldUpdate);
-        });
-        wrapper.appendChild(clearButton);
-      }
-
-      cell.appendChild(wrapper);
+    if (isHoldDateColumn(column)) {
+      renderHoldDateCell(cell, column, entry, value, isPending);
       return;
     }
 
     renderDashboardCell(cell, column, value);
+  }
+
+  function isHoldDateColumn(column) {
+    return column === 'Start Date' || column === 'Next Contact' || column === 'Return Date?' || column === 'End of 6-week Nurture';
+  }
+
+  function renderHoldDateCell(cell, column, entry, value, isPending) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'date-cell-control';
+    const pickerButton = document.createElement('button');
+    pickerButton.className = 'date-picker-button';
+    pickerButton.type = 'button';
+    pickerButton.disabled = isPending;
+    pickerButton.textContent = value || 'Select date';
+    pickerButton.addEventListener('click', () => {
+      openInlineDatePicker(entry, column, value, pickerButton);
+    });
+    wrapper.appendChild(pickerButton);
+
+    if (column === 'Next Contact' || column === 'Return Date?' || column === 'End of 6-week Nurture') {
+      const clearButton = document.createElement('button');
+      clearButton.className = 'date-clear-button';
+      clearButton.type = 'button';
+      clearButton.disabled = isPending;
+      clearButton.setAttribute('aria-label', `Clear ${column}`);
+      clearButton.textContent = 'x';
+      clearButton.addEventListener('click', () => {
+        const fieldUpdate = {};
+        fieldUpdate[column] = '-';
+        saveHoldEntry(entry, fieldUpdate);
+      });
+      wrapper.appendChild(clearButton);
+    }
+
+    cell.appendChild(wrapper);
   }
 
   function saveHoldEntry(entry, fields) {
@@ -912,7 +1323,9 @@
       return;
     }
 
-    const section = entry.holdType === 'yellow' ? state.holdsData.yellow : state.holdsData.green;
+    const section = entry.holdType === 'upcoming'
+      ? state.holdsData.upcoming
+      : (entry.holdType === 'yellow' ? state.holdsData.yellow : state.holdsData.green);
     const targetRow = section.rows.find((row) => row.rowNumber === entry.rowNumber);
     if (!targetRow) {
       return;
@@ -922,8 +1335,14 @@
       targetRow.fields[fieldName] = formatOptimisticHoldValue(fieldName, fields[fieldName]);
     });
 
-    if (fields['Membership Status'] === 'Active' || fields['Membership Status'] === 'Cancel') {
+    if (fields['Membership Status'] === 'Active' || fields['Membership Status'] === 'Trial' || fields['Membership Status'] === 'Cancel') {
       removeOptimisticHoldRow(entry.rowNumber);
+      renderHolds(state.holdsData);
+      return;
+    }
+
+    if (entry.holdType === 'upcoming') {
+      applyOptimisticUpcomingHoldDateMath(targetRow);
       renderHolds(state.holdsData);
       return;
     }
@@ -939,8 +1358,19 @@
     renderHolds(state.holdsData);
   }
 
+  function applyOptimisticUpcomingHoldDateMath(targetRow) {
+    const startInput = displayDateToInputValue(targetRow.fields['Start Date']);
+    const returnValue = targetRow.fields['Return Date?'];
+    const returnInput = returnValue === '-' ? '' : displayDateToInputValue(returnValue);
+    const calculatedType = calculateHoldType(startInput, returnInput);
+    targetRow.fields['Membership Status'] = calculatedType === 'yellow' ? 'Yellow Hold' : 'Green Hold';
+    targetRow.fields['End of 6-week Nurture'] = calculatedType === 'yellow'
+      ? addDaysToDisplayDate(targetRow.fields['Start Date'], 42)
+      : '';
+  }
+
   function applyOptimisticHoldDateMath(entry, targetRow) {
-    if (targetRow.fields['Membership Status'] === 'Active' || targetRow.fields['Membership Status'] === 'Cancel') {
+    if (targetRow.fields['Membership Status'] === 'Active' || targetRow.fields['Membership Status'] === 'Trial' || targetRow.fields['Membership Status'] === 'Cancel') {
       return;
     }
 
@@ -971,6 +1401,9 @@
   function removeOptimisticHoldRow(rowNumber) {
     state.holdsData.green.rows = state.holdsData.green.rows.filter((row) => row.rowNumber !== rowNumber);
     state.holdsData.yellow.rows = state.holdsData.yellow.rows.filter((row) => row.rowNumber !== rowNumber);
+    if (state.holdsData.upcoming) {
+      state.holdsData.upcoming.rows = state.holdsData.upcoming.rows.filter((row) => row.rowNumber !== rowNumber);
+    }
   }
 
   function formatOptimisticHoldValue(fieldName, value) {
@@ -996,7 +1429,7 @@
     return date.toLocaleDateString();
   }
 
-  function openInlineDatePicker(entry, column, value, anchorElement) {
+  function openInlineDatePicker(entry, column, value, anchorElement, onSelect) {
     closeInlineDatePicker();
 
     const selectedDate = parseDisplayOrInputDate(value) || new Date();
@@ -1004,7 +1437,8 @@
       entry: entry,
       column: column,
       monthDate: new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1),
-      selectedDate: selectedDate
+      selectedDate: selectedDate,
+      onSelect: onSelect
     };
 
     const backdrop = document.createElement('div');
@@ -1050,33 +1484,6 @@
 
   function renderInlineDatePicker(container, pickerState) {
     container.innerHTML = '';
-
-    const header = document.createElement('div');
-    header.className = 'inline-date-header';
-
-    const previousButton = document.createElement('button');
-    previousButton.type = 'button';
-    previousButton.textContent = '<';
-    previousButton.addEventListener('click', () => {
-      pickerState.monthDate.setMonth(pickerState.monthDate.getMonth() - 1);
-      renderInlineDatePicker(container, pickerState);
-    });
-
-    const title = document.createElement('strong');
-    title.textContent = pickerState.monthDate.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
-
-    const nextButton = document.createElement('button');
-    nextButton.type = 'button';
-    nextButton.textContent = '>';
-    nextButton.addEventListener('click', () => {
-      pickerState.monthDate.setMonth(pickerState.monthDate.getMonth() + 1);
-      renderInlineDatePicker(container, pickerState);
-    });
-
-    header.appendChild(previousButton);
-    header.appendChild(title);
-    header.appendChild(nextButton);
-    container.appendChild(header);
 
     const monthsWrap = document.createElement('div');
     monthsWrap.className = 'inline-date-months';
@@ -1126,8 +1533,13 @@
         button.className = 'selected';
       }
       button.addEventListener('click', () => {
+        const selectedValue = formatInputDate(date);
+        if (typeof pickerState.onSelect === 'function') {
+          pickerState.onSelect(selectedValue);
+          return;
+        }
         const fieldUpdate = {};
-        fieldUpdate[pickerState.column] = formatInputDate(date);
+        fieldUpdate[pickerState.column] = selectedValue;
         saveHoldEntry(pickerState.entry, fieldUpdate);
       });
       grid.appendChild(button);
@@ -1171,7 +1583,7 @@
     if (Array.isArray(savedColumns)) {
       const validSavedColumns = savedColumns.filter((column) => memberTable.columns.indexOf(column) > -1);
       if (validSavedColumns.length) {
-        return validSavedColumns;
+        return orderVisibleColumns(validSavedColumns, memberTable.columns);
       }
     }
     return memberTable.defaultVisibleColumns.slice();
@@ -1225,6 +1637,11 @@
     if (!state.dashboardRows.length) {
       elements.dashboardMemberTable.className = 'table-wrap empty-state';
       elements.dashboardMemberTable.textContent = 'No members found.';
+      return;
+    }
+
+    if (isMobileView()) {
+      renderMobileDashboardTable();
       return;
     }
 
@@ -1286,6 +1703,46 @@
     table.appendChild(tbody);
 
     elements.dashboardMemberTable.className = 'table-wrap';
+    elements.dashboardMemberTable.innerHTML = '';
+    elements.dashboardMemberTable.appendChild(table);
+  }
+
+  function renderMobileDashboardTable() {
+    const table = document.createElement('table');
+    table.className = 'member-table mobile-dashboard-table';
+
+    const tbody = document.createElement('tbody');
+    getSortedDashboardRows().forEach((member) => {
+      const row = document.createElement('tr');
+      row.tabIndex = 0;
+      row.setAttribute('role', 'button');
+      row.setAttribute('aria-label', `Open actions for ${member.fields.Name || 'member'}`);
+      row.addEventListener('click', () => openMobileMemberActions(member));
+      row.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+          openMobileMemberActions(member);
+        }
+      });
+
+      const nameCell = document.createElement('td');
+      nameCell.dataset.label = 'Name';
+      nameCell.textContent = member.fields.Name || '';
+      row.appendChild(nameCell);
+
+      const statusCell = document.createElement('td');
+      statusCell.dataset.label = 'Membership Status';
+      const status = member.fields['Membership Status'] || '';
+      const statusPill = document.createElement('span');
+      statusPill.className = `mobile-status-value ${getStatusClass(String(status).trim().toLowerCase())}`;
+      statusPill.textContent = status;
+      statusCell.appendChild(statusPill);
+      row.appendChild(statusCell);
+
+      tbody.appendChild(row);
+    });
+    table.appendChild(tbody);
+
+    elements.dashboardMemberTable.className = 'table-wrap mobile-dashboard-wrap';
     elements.dashboardMemberTable.innerHTML = '';
     elements.dashboardMemberTable.appendChild(table);
   }
@@ -1363,17 +1820,147 @@
 
   function renderCancellationCell(cell, column, entry) {
     const value = getFieldValue(entry.fields, column);
+    const isPending = isCancellationCellPending(entry, column);
+    if (isPending) {
+      cell.classList.add('pending-cell');
+    }
+
     if (column === 'Membership Status') {
-      cell.appendChild(createStatusSelect(value || 'Cancel', ['Cancel', 'Active'], (select) => {
+      cell.appendChild(createStatusSelect(value || 'Cancel', ['Cancel', 'Active', 'Trial'], (select) => {
         handleCancellationStatusChange(entry, select);
       }));
       return;
     }
 
-    if ((column === 'Name' || column === 'Membership Age at Cancel') && entry.memberId) {
+    if (column === 'Reason' || column === 'Solution') {
+      const input = document.createElement('input');
+      input.className = 'table-control';
+      input.value = value;
+      input.disabled = isPending;
+      input.addEventListener('click', (event) => event.stopPropagation());
+      input.addEventListener('keydown', (event) => {
+        event.stopPropagation();
+        if (event.key === 'Enter') {
+          input.blur();
+        }
+      });
+      input.addEventListener('blur', () => {
+        if (input.value !== value) {
+          const fields = {};
+          fields[column] = input.value;
+          saveCancellationFields(entry, fields, { redraw: false });
+        }
+      });
+      cell.appendChild(input);
+      return;
+    }
+
+    if (column === 'Last Contact') {
+      const pickerButton = document.createElement('button');
+      pickerButton.className = 'date-picker-button';
+      pickerButton.type = 'button';
+      pickerButton.disabled = isPending;
+      pickerButton.textContent = value || 'Select date';
+      pickerButton.addEventListener('click', (event) => {
+        event.stopPropagation();
+        openInlineDatePicker(entry, column, value, pickerButton, (selectedValue) => {
+          saveCancellationFields(entry, { 'Last Contact': selectedValue });
+        });
+      });
+      cell.appendChild(pickerButton);
+      return;
+    }
+
+    if (column === 'Stay in contact') {
+      const label = document.createElement('label');
+      label.className = 'table-checkbox-control';
+      label.addEventListener('click', (event) => event.stopPropagation());
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = isTruthyDisplayValue(value);
+      checkbox.disabled = isPending;
+      checkbox.addEventListener('change', () => {
+        saveCancellationFields(entry, { 'Stay in contact': checkbox.checked });
+      });
+      const mark = document.createElement('span');
+      mark.textContent = checkbox.checked ? 'Yes' : 'No';
+      label.appendChild(checkbox);
+      label.appendChild(mark);
+      cell.appendChild(label);
+      return;
+    }
+
+    if (entry.memberId) {
       cell.classList.add('clickable-cell');
     }
     renderTableDisplayCell(cell, column, value);
+  }
+
+  function saveCancellationFields(entry, fields, options) {
+    const shouldRedraw = !options || options.redraw !== false;
+    if (Object.keys(fields).some((fieldName) => isCancellationCellPending(entry, fieldName))) {
+      setStatus('Still saving that cell...');
+      return;
+    }
+
+    setCancellationCellsPending(entry, fields, true);
+    Object.keys(fields).forEach((fieldName) => {
+      entry.fields[fieldName] = fields[fieldName];
+    });
+    if (shouldRedraw) {
+      renderCancellationsTable();
+    }
+    setStatus('Saving cancellation...');
+    closeInlineDatePicker();
+    google.script.run
+      .withSuccessHandler((updatedEntry) => {
+        setCancellationCellsPending(entry, fields, false);
+        const target = state.cancellationsRows.find((row) => row.rowNumber === updatedEntry.rowNumber);
+        if (target) {
+          target.fields = updatedEntry.fields;
+        }
+        setCachedViewData('cancellations', {
+          columns: state.cancellationsColumns,
+          defaultVisibleColumns: state.visibleCancellationsColumns,
+          rows: state.cancellationsRows
+        });
+        if (shouldRedraw) {
+          renderCancellationsTable();
+        }
+        setStatus('Cancellation updated.');
+      })
+      .withFailureHandler((error) => {
+        setCancellationCellsPending(entry, fields, false);
+        loadCancellations();
+        showError(error);
+      })
+      .updateCancellationEntry(state.locationKey, {
+        rowNumber: entry.rowNumber,
+        fields: fields
+      });
+  }
+
+  function isCancellationCellPending(entry, column) {
+    return Boolean(state.pendingCancellationSaves[getCancellationCellKey(entry, column)]);
+  }
+
+  function setCancellationCellPending(entry, column, isPending) {
+    const key = getCancellationCellKey(entry, column);
+    if (isPending) {
+      state.pendingCancellationSaves[key] = true;
+    } else {
+      delete state.pendingCancellationSaves[key];
+    }
+  }
+
+  function setCancellationCellsPending(entry, fields, isPending) {
+    Object.keys(fields).forEach((fieldName) => {
+      setCancellationCellPending(entry, fieldName, isPending);
+    });
+  }
+
+  function getCancellationCellKey(entry, column) {
+    return `${entry.rowNumber}:${column}`;
   }
 
   function handleCancellationStatusChange(entry, select) {
@@ -1383,7 +1970,7 @@
       return;
     }
 
-    if (nextStatus !== 'Active') {
+    if (nextStatus !== 'Active' && nextStatus !== 'Trial') {
       select.value = previousStatus;
       select.className = `table-control status-select ${getStatusClass(previousStatus.trim().toLowerCase())}`;
       return;
@@ -1396,9 +1983,9 @@
       return;
     }
 
-    entry.fields['Membership Status'] = 'Active';
+    entry.fields['Membership Status'] = nextStatus;
     renderCancellationsTable();
-    setStatus('Reactivating member...');
+    setStatus('Updating member status...');
     google.script.run
       .withSuccessHandler((updatedMember) => {
         const target = state.cancellationsRows.find((row) => row.rowNumber === entry.rowNumber);
@@ -1407,7 +1994,7 @@
         }
         renderCancellationsTable();
         loadDashboard();
-        setStatus('Member reactivated.');
+        setStatus('Member status updated.');
       })
       .withFailureHandler((error) => {
         loadCancellations();
@@ -1415,16 +2002,16 @@
       })
       .setMemberStatus(state.locationKey, {
         memberId: entry.memberId,
-        status: 'Active',
+        status: nextStatus,
         cancellationRowNumber: entry.rowNumber,
-        reactivate: true
+        reactivate: nextStatus === 'Active' || nextStatus === 'Trial'
       });
   }
 
   function renderDashboardCell(cell, column, value, member) {
     if (column === 'Membership Status') {
       if (member && member.memberId) {
-        cell.appendChild(createStatusSelect(value, ['Active', 'Green Hold', 'Yellow Hold', 'Cancel'], (select) => {
+        cell.appendChild(createStatusSelect(value, ['Active', 'Trial', 'Green Hold', 'Yellow Hold', 'Cancel'], (select) => {
           handleDashboardStatusChange(member, select);
         }));
       } else {
@@ -1492,6 +2079,10 @@
       return false;
     }
     return null;
+  }
+
+  function isTruthyDisplayValue(value) {
+    return getBooleanDisplayValue(value) === true;
   }
 
   function formatPricePoint(value) {
@@ -1614,6 +2205,9 @@
     if (normalizedStatus === 'active') {
       return 'status-active';
     }
+    if (normalizedStatus === 'trial') {
+      return 'status-trial';
+    }
     if (normalizedStatus === 'green hold') {
       return 'status-green-hold';
     }
@@ -1726,6 +2320,7 @@
     } else {
       state.visibleDashboardColumns = state.visibleDashboardColumns.filter((visibleColumn) => visibleColumn !== column);
     }
+    state.visibleDashboardColumns = orderVisibleColumns(state.visibleDashboardColumns, state.dashboardColumns);
     saveDashboardColumns();
     renderDashboardTable();
   }
@@ -1738,8 +2333,13 @@
     } else {
       state.visibleCancellationsColumns = state.visibleCancellationsColumns.filter((visibleColumn) => visibleColumn !== column);
     }
+    state.visibleCancellationsColumns = orderVisibleColumns(state.visibleCancellationsColumns, state.cancellationsColumns);
     saveColumns('cancellations', state.visibleCancellationsColumns);
     renderCancellationsTable();
+  }
+
+  function orderVisibleColumns(visibleColumns, sourceColumns) {
+    return sourceColumns.filter((column) => visibleColumns.indexOf(column) > -1);
   }
 
   function toggleColumnMenu() {
@@ -1833,7 +2433,7 @@
           }
           renderGlobalSearchMessage(error.message || 'Search failed.');
         })
-        .searchAllMembersAndCancels(state.locationKey, query);
+        .searchMembers(state.locationKey, query);
     }, 180);
   }
 
@@ -1877,6 +2477,7 @@
       const button = document.createElement('button');
       button.className = 'global-search-item';
       button.type = 'button';
+      const sourceMarkup = result.source ? `<span class="search-source-pill">${escapeHtml(result.source)}</span>` : '';
       button.innerHTML = `
         <span class="global-search-primary">
           <span class="item-title">${escapeHtml(result.name || 'Unnamed member')}</span>
@@ -1886,7 +2487,7 @@
           <span class="status-pill ${getStatusClass(String(result.membershipStatus || '').trim().toLowerCase())}">
             ${escapeHtml(result.membershipStatus || result.source || '')}
           </span>
-          <span class="search-source-pill">${escapeHtml(result.source || '')}</span>
+          ${sourceMarkup}
         </span>
       `;
       button.addEventListener('click', () => {
@@ -2012,26 +2613,71 @@
   }
 
   function renderMemberProfile(member) {
-    elements.memberProfile.className = 'profile-form';
+    elements.memberProfile.className = 'profile-form member-profile-form';
     elements.memberProfile.innerHTML = '';
 
-    Object.keys(member.fields).forEach((fieldName) => {
-      const value = member.fields[fieldName] || '';
-      const isEditable = member.editableFields.indexOf(fieldName) > -1;
-      const wrapper = document.createElement('div');
-      wrapper.className = fieldName === 'Notes' || fieldName === 'Reason/Solution' ? 'form-field full' : 'form-field';
+    const summary = document.createElement('section');
+    summary.className = 'profile-summary-card';
+    [
+      'Name',
+      'Membership Status',
+      'Price Point',
+      'Days Per Week',
+      'Payment Option',
+      'Start Date',
+      'Referral Member'
+    ].forEach((fieldName) => appendProfileField(summary, member, fieldName));
+    elements.memberProfile.appendChild(summary);
 
-      const label = document.createElement('label');
-      label.textContent = fieldName;
-      wrapper.appendChild(label);
+    appendProfileField(elements.memberProfile, member, 'Notes', 'profile-notes-field');
 
-      wrapper.appendChild(isEditable ? createProfileInput(fieldName, value) : createReadOnlyProfileValue(fieldName, value));
+    const toggleRow = document.createElement('section');
+    toggleRow.className = 'profile-toggle-row';
+    ['Reactivation', 'Recurring', 'Referral'].forEach((fieldName) => appendProfileField(toggleRow, member, fieldName, 'profile-toggle-field'));
+    elements.memberProfile.appendChild(toggleRow);
 
-      elements.memberProfile.appendChild(wrapper);
-    });
+    const context = document.createElement('section');
+    context.className = 'profile-context-grid';
+    appendTemperaturePreview(context);
+    appendProfileField(context, member, 'Reason/Solution', 'profile-reason-field');
+    elements.memberProfile.appendChild(context);
 
     updateSaveButton();
     updateProfileActions();
+  }
+
+  function appendProfileField(parent, member, fieldName, extraClassName) {
+    if (!Object.prototype.hasOwnProperty.call(member.fields, fieldName)) {
+      return;
+    }
+
+    const value = member.fields[fieldName] || '';
+    const isEditable = member.editableFields.indexOf(fieldName) > -1;
+    const wrapper = document.createElement('div');
+    wrapper.className = `form-field ${extraClassName || ''}`.trim();
+
+    const label = document.createElement('label');
+    label.textContent = fieldName;
+    wrapper.appendChild(label);
+    wrapper.appendChild(isEditable ? createProfileInput(fieldName, value) : createReadOnlyProfileValue(fieldName, value));
+
+    parent.appendChild(wrapper);
+  }
+
+  function appendTemperaturePreview(parent) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'form-field profile-temperature-field';
+
+    const label = document.createElement('label');
+    label.textContent = 'Temperature';
+    wrapper.appendChild(label);
+
+    const value = document.createElement('div');
+    value.className = 'readonly-value temperature-preview';
+    value.textContent = 'Not set';
+    wrapper.appendChild(value);
+
+    parent.appendChild(wrapper);
   }
 
   function createProfileInput(fieldName, value) {
@@ -2040,6 +2686,9 @@
     }
     if (fieldName === 'Payment Option') {
       return createSelectInput(fieldName, value, ['', 'Monthly', 'Bi-weekly', 'Weekly']);
+    }
+    if (fieldName === 'Price Point') {
+      return createPricePointInput(fieldName, value);
     }
     if (isBooleanProfileField(fieldName)) {
       return createBooleanToggle(fieldName, value);
@@ -2060,6 +2709,27 @@
     input.dataset.field = fieldName;
     input.addEventListener('input', markDirty);
     return input;
+  }
+
+  function createPricePointInput(fieldName, value) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'price-input-wrap';
+
+    const prefix = document.createElement('span');
+    prefix.textContent = '$';
+    wrapper.appendChild(prefix);
+
+    const input = document.createElement('input');
+    input.className = 'input';
+    input.type = 'number';
+    input.min = '0';
+    input.step = '0.01';
+    input.value = String(value || '').replace(/[$,]/g, '');
+    input.dataset.field = fieldName;
+    input.addEventListener('input', markDirty);
+    wrapper.appendChild(input);
+
+    return wrapper;
   }
 
   function createSelectInput(fieldName, value, options) {
@@ -2109,11 +2779,11 @@
   }
 
   function isBooleanProfileField(fieldName) {
-    return fieldName === 'Recurring' || fieldName === 'Reactivation';
+    return fieldName === 'Recurring' || fieldName === 'Reactivation' || fieldName === 'Referral';
   }
 
   function getBooleanFieldValue(fieldName, isActive) {
-    if (fieldName === 'Recurring') {
+    if (fieldName === 'Recurring' || fieldName === 'Referral') {
       return isActive ? 'true' : 'false';
     }
     return isActive ? 'Yes' : 'No';
@@ -2123,7 +2793,11 @@
     const readOnly = document.createElement('div');
     readOnly.className = 'readonly-value';
     if (fieldName === 'Membership Status') {
-      renderDashboardCell(readOnly, fieldName, value);
+      const normalizedStatus = String(value || '').trim().toLowerCase();
+      readOnly.className = `readonly-value profile-status-value ${getStatusClass(normalizedStatus)}`;
+      readOnly.textContent = value || '';
+    } else if (fieldName === 'Price Point') {
+      readOnly.textContent = formatPricePoint(value);
     } else {
       readOnly.textContent = value;
     }
@@ -2425,7 +3099,7 @@
   function updateHoldModalFields() {
     const holdType = calculateHoldType(elements.holdStartDateInput.value, elements.holdReturnDateInput.value);
     const isYellowHold = holdType === 'yellow';
-    elements.holdEndNurtureField.hidden = !isYellowHold;
+    elements.holdEndNurtureField.hidden = true;
     elements.holdCalculatedStatus.textContent = isYellowHold ? 'Yellow Hold' : 'Green Hold';
 
     if (isYellowHold) {

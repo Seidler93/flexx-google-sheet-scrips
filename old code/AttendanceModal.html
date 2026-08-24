@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        padding: 20px;
+        color: #333;
+      }
+      h2 { margin-top: 0; }
+      label { font-weight: bold; }
+      input, textarea, button { margin-top: 4px; }
+      textarea { width: 100%; font-family: monospace; }
+      button {
+        padding: 10px 16px;
+        background-color: #4caf50;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      button:disabled {
+        background-color: #aaa;
+        cursor: not-allowed;
+      }
+      #progressContainer {
+        display: none;
+        margin-top: 24px;
+      }
+      .progress-bar {
+        width: 100%;
+        background-color: #f3f3f3;
+        border-radius: 4px;
+        overflow: hidden;
+        height: 10px;
+        margin-bottom: 8px;
+      }
+      .progress-bar-fill {
+        width: 0%;
+        height: 100%;
+        background-color: #4caf50;
+        transition: width 0.4s ease;
+      }
+      #statusText {
+        text-align: center;
+        font-size: 14px;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>Import Session Data</h2>
+
+    <label>Start Date:</label><br>
+    <input type="date" id="startDate"><br><br>
+
+    <label>End Date:</label><br>
+    <input type="date" id="endDate"><br><br>
+
+    <label>Paste Data:</label><br>
+    <textarea id="sessionData" rows="10"></textarea><br><br>
+
+    <button id="submitBtn" onclick="startImport()">Submit</button>
+
+    <div id="progressContainer">
+      <div class="progress-bar">
+        <div class="progress-bar-fill" id="progressFill"></div>
+      </div>
+      <div id="statusText">Preparing...</div>
+    </div>
+
+    <script>
+      async function startImport() {
+        const data = document.getElementById('sessionData').value.trim();
+        const startDate = document.getElementById('startDate').value;
+        const endDate = document.getElementById('endDate').value;
+
+        if (!data) return alert('⚠️ Please paste session data.');
+        if (!startDate || !endDate) return alert('⚠️ Please select both start and end dates.');
+
+        const btn = document.getElementById('submitBtn');
+        btn.disabled = true;
+        document.getElementById('progressContainer').style.display = 'block';
+        updateProgress(0, "Starting import...");
+
+        try {
+          // Step 1
+          await runServerStep('processStep1', [data, startDate, endDate]);
+          updateProgress(25, "✅ Step 1 complete: Loaded member data");
+
+          // Step 2
+          await runServerStep('processStep2', [data, startDate, endDate]);
+          updateProgress(50, "✅ Step 2 complete: Parsed sessions");
+
+          // Step 3
+          await runServerStep('processStep3', [data, startDate, endDate]);
+          updateProgress(75, "✅ Step 3 complete: Calculated attendance");
+
+          // Step 4
+          await runServerStep('processStep4', [data, startDate, endDate]);
+          updateProgress(100, "✅ All steps complete!");
+
+          setTimeout(() => google.script.host.close(), 800);
+        } catch (err) {
+          updateProgress(0, "❌ Error: " + err.message);
+          btn.disabled = false;
+        }
+      }
+
+      function runServerStep(functionName, args) {
+        return new Promise((resolve, reject) => {
+          google.script.run
+            .withSuccessHandler(resolve)
+            .withFailureHandler(reject)[functionName](...args);
+        });
+      }
+
+      function updateProgress(percent, message) {
+        document.getElementById('progressFill').style.width = percent + '%';
+        document.getElementById('statusText').innerText = message;
+      }
+    </script>
+  </body>
+</html>

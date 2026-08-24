@@ -1,0 +1,2268 @@
+<script>
+  const state = {
+    config: null,
+    locationKey: window.FLEXX_INITIAL_LOCATION_KEY,
+    activeView: 'dashboard',
+    selectedMember: null,
+    dashboardColumns: [],
+    dashboardRows: [],
+    visibleDashboardColumns: [],
+    cancellationsColumns: [],
+    cancellationsRows: [],
+    visibleCancellationsColumns: [],
+    holdsData: null,
+    pendingHoldSaves: {},
+    viewCache: {},
+    loadingViews: {},
+    globalSearchTimer: null,
+    globalSearchRequestId: 0,
+    dashboardSort: {
+      column: 'Name',
+      direction: 'asc'
+    },
+    cancellationsSort: {
+      column: 'Cancel Date',
+      direction: 'desc'
+    },
+    dirty: false,
+    saving: false,
+    holding: false,
+    addingMember: false
+  };
+
+  const elements = {};
+
+  document.addEventListener('DOMContentLoaded', () => {
+    cacheElements();
+    bindEvents();
+    loadConfig();
+  });
+
+  function cacheElements() {
+    elements.locationSelect = document.getElementById('locationSelect');
+    elements.locationLabel = document.getElementById('locationLabel');
+    elements.globalStatus = document.getElementById('globalStatus');
+    elements.globalSearchInput = document.getElementById('globalSearchInput');
+    elements.globalSearchResults = document.getElementById('globalSearchResults');
+    elements.addMemberButton = document.getElementById('addMemberButton');
+    elements.pageTitle = document.getElementById('pageTitle');
+    elements.dashboardView = document.getElementById('dashboardView');
+    elements.membersView = document.getElementById('membersView');
+    elements.holdsView = document.getElementById('holdsView');
+    elements.cancellationsView = document.getElementById('cancellationsView');
+    elements.metricActive = document.getElementById('metricActive');
+    elements.metricGreenHolds = document.getElementById('metricGreenHolds');
+    elements.metricYellowHolds = document.getElementById('metricYellowHolds');
+    elements.metricCancelsThisWeek = document.getElementById('metricCancelsThisWeek');
+    elements.columnMenuButton = document.getElementById('columnMenuButton');
+    elements.columnMenu = document.getElementById('columnMenu');
+    elements.dashboardMemberTable = document.getElementById('dashboardMemberTable');
+    elements.cancellationsColumnMenuButton = document.getElementById('cancellationsColumnMenuButton');
+    elements.cancellationsColumnMenu = document.getElementById('cancellationsColumnMenu');
+    elements.cancellationsTable = document.getElementById('cancellationsTable');
+    elements.memberSearchInput = document.getElementById('memberSearchInput');
+    elements.memberSearchButton = document.getElementById('memberSearchButton');
+    elements.searchResults = document.getElementById('searchResults');
+    elements.memberModal = document.getElementById('memberModal');
+    elements.closeMemberModalButton = document.getElementById('closeMemberModalButton');
+    elements.memberProfile = document.getElementById('memberProfile');
+    elements.saveMemberButton = document.getElementById('saveMemberButton');
+    elements.holdMemberButton = document.getElementById('holdMemberButton');
+    elements.cancelMemberButton = document.getElementById('cancelMemberButton');
+    elements.holdModal = document.getElementById('holdModal');
+    elements.closeHoldModalButton = document.getElementById('closeHoldModalButton');
+    elements.cancelHoldButton = document.getElementById('cancelHoldButton');
+    elements.holdForm = document.getElementById('holdForm');
+    elements.holdReasonInput = document.getElementById('holdReasonInput');
+    elements.holdStartDateInput = document.getElementById('holdStartDateInput');
+    elements.holdNextContactInput = document.getElementById('holdNextContactInput');
+    elements.holdReturnDateInput = document.getElementById('holdReturnDateInput');
+    elements.holdEndNurtureField = document.getElementById('holdEndNurtureField');
+    elements.holdEndNurtureInput = document.getElementById('holdEndNurtureInput');
+    elements.holdCalculatedStatus = document.getElementById('holdCalculatedStatus');
+    elements.holdModalError = document.getElementById('holdModalError');
+    elements.submitHoldButton = document.getElementById('submitHoldButton');
+    elements.greenHoldsTable = document.getElementById('greenHoldsTable');
+    elements.yellowHoldsTable = document.getElementById('yellowHoldsTable');
+    elements.greenHoldsCount = document.getElementById('greenHoldsCount');
+    elements.yellowHoldsCount = document.getElementById('yellowHoldsCount');
+    elements.cancelModal = document.getElementById('cancelModal');
+    elements.closeCancelModalButton = document.getElementById('closeCancelModalButton');
+    elements.cancelCancelButton = document.getElementById('cancelCancelButton');
+    elements.cancelForm = document.getElementById('cancelForm');
+    elements.cancelReasonInput = document.getElementById('cancelReasonInput');
+    elements.cancelSolutionInput = document.getElementById('cancelSolutionInput');
+    elements.cancelDateInput = document.getElementById('cancelDateInput');
+    elements.cancelModalError = document.getElementById('cancelModalError');
+    elements.submitCancelButton = document.getElementById('submitCancelButton');
+    elements.addMemberModal = document.getElementById('addMemberModal');
+    elements.closeAddMemberModalButton = document.getElementById('closeAddMemberModalButton');
+    elements.cancelAddMemberButton = document.getElementById('cancelAddMemberButton');
+    elements.addMemberForm = document.getElementById('addMemberForm');
+    elements.addFirstNameInput = document.getElementById('addFirstNameInput');
+    elements.addLastNameInput = document.getElementById('addLastNameInput');
+    elements.addStartDateInput = document.getElementById('addStartDateInput');
+    elements.addDaysPerWeekInput = document.getElementById('addDaysPerWeekInput');
+    elements.addPaymentOptionInput = document.getElementById('addPaymentOptionInput');
+    elements.addPricePointInput = document.getElementById('addPricePointInput');
+    elements.addTrialToggle = document.getElementById('addTrialToggle');
+    elements.addTrialDateField = document.getElementById('addTrialDateField');
+    elements.addTrialDateInput = document.getElementById('addTrialDateInput');
+    elements.addReferralToggle = document.getElementById('addReferralToggle');
+    elements.addReferralMemberField = document.getElementById('addReferralMemberField');
+    elements.addReferralMemberInput = document.getElementById('addReferralMemberInput');
+    elements.addRecurringToggle = document.getElementById('addRecurringToggle');
+    elements.addNotesInput = document.getElementById('addNotesInput');
+    elements.addMemberModalError = document.getElementById('addMemberModalError');
+    elements.submitAddMemberButton = document.getElementById('submitAddMemberButton');
+    elements.inlineDatePicker = null;
+  }
+
+  function bindEvents() {
+    document.querySelectorAll('.nav-item[data-view]').forEach((button) => {
+      button.addEventListener('click', () => switchView(button.dataset.view));
+    });
+
+    elements.locationSelect.addEventListener('change', () => {
+      state.locationKey = elements.locationSelect.value;
+      state.selectedMember = null;
+      state.dirty = false;
+      state.loadingViews = {};
+      updateUrlLocation();
+      renderLocationLabel();
+      clearMemberProfile();
+      clearSearchResults();
+      loadActiveViewData();
+    });
+
+    elements.memberSearchButton.addEventListener('click', runSearch);
+    elements.memberSearchInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        runSearch();
+      }
+    });
+    elements.globalSearchInput.addEventListener('input', handleGlobalSearchInput);
+    elements.globalSearchInput.addEventListener('keydown', handleGlobalSearchKeydown);
+    document.addEventListener('click', closeGlobalSearchOnOutsideClick);
+    elements.addMemberButton.addEventListener('click', openAddMemberModal);
+    elements.closeAddMemberModalButton.addEventListener('click', closeAddMemberModal);
+    elements.cancelAddMemberButton.addEventListener('click', closeAddMemberModal);
+    elements.addMemberForm.addEventListener('submit', submitAddMemberForm);
+    bindYesNoToggle(elements.addTrialToggle, false, (isActive) => {
+      elements.addTrialDateField.hidden = !isActive;
+      if (!isActive) {
+        elements.addTrialDateInput.value = '';
+      }
+    });
+    bindYesNoToggle(elements.addReferralToggle, false, (isActive) => {
+      elements.addReferralMemberField.hidden = !isActive;
+      if (!isActive) {
+        elements.addReferralMemberInput.value = '';
+      }
+    });
+    bindYesNoToggle(elements.addRecurringToggle, false);
+    elements.saveMemberButton.addEventListener('click', saveMember);
+    elements.closeMemberModalButton.addEventListener('click', closeMemberModal);
+    elements.holdMemberButton.addEventListener('click', handleHoldAction);
+    elements.cancelMemberButton.addEventListener('click', openCancelModal);
+    elements.closeHoldModalButton.addEventListener('click', closeHoldModal);
+    elements.cancelHoldButton.addEventListener('click', closeHoldModal);
+    elements.holdStartDateInput.addEventListener('change', updateHoldModalFields);
+    elements.holdReturnDateInput.addEventListener('change', updateHoldModalFields);
+    elements.holdForm.addEventListener('submit', submitHoldForm);
+    elements.columnMenuButton.addEventListener('click', toggleColumnMenu);
+    elements.cancellationsColumnMenuButton.addEventListener('click', toggleCancellationsColumnMenu);
+    document.addEventListener('click', closeColumnMenuOnOutsideClick);
+    elements.holdModal.addEventListener('click', (event) => {
+      if (event.target === elements.holdModal) {
+        closeHoldModal();
+      }
+    });
+    elements.memberModal.addEventListener('click', (event) => {
+      if (event.target === elements.memberModal) {
+        closeMemberModal();
+      }
+    });
+    elements.closeCancelModalButton.addEventListener('click', closeCancelModal);
+    elements.cancelCancelButton.addEventListener('click', closeCancelModal);
+    elements.cancelForm.addEventListener('submit', submitCancelForm);
+    elements.cancelModal.addEventListener('click', (event) => {
+      if (event.target === elements.cancelModal) {
+        closeCancelModal();
+      }
+    });
+    elements.addMemberModal.addEventListener('click', (event) => {
+      if (event.target === elements.addMemberModal) {
+        closeAddMemberModal();
+      }
+    });
+  }
+
+  function loadConfig() {
+    setStatus('Loading app...');
+    google.script.run
+      .withSuccessHandler((config) => {
+        state.config = config;
+        state.locationKey = config.selectedLocationKey || config.defaultLocationKey;
+        renderLocations();
+        renderLocationLabel();
+        loadDashboard();
+      })
+      .withFailureHandler(showError)
+      .getAppConfig(state.locationKey);
+  }
+
+  function renderLocations() {
+    elements.locationSelect.innerHTML = '';
+    state.config.locations.forEach((location) => {
+      const option = document.createElement('option');
+      option.value = location.key;
+      option.textContent = location.name;
+      elements.locationSelect.appendChild(option);
+    });
+    elements.locationSelect.value = state.locationKey;
+  }
+
+  function renderLocationLabel() {
+    const location = getCurrentLocation();
+    elements.locationLabel.textContent = location ? location.name : '';
+  }
+
+  function getCurrentLocation() {
+    if (!state.config) {
+      return null;
+    }
+    return state.config.locations.find((location) => location.key === state.locationKey);
+  }
+
+  function switchView(view) {
+    state.activeView = view;
+    elements.pageTitle.textContent = getViewTitle(view);
+    document.querySelectorAll('.nav-item[data-view]').forEach((button) => {
+      button.classList.toggle('active', button.dataset.view === view);
+    });
+    elements.dashboardView.classList.toggle('active', view === 'dashboard');
+    elements.membersView.classList.toggle('active', view === 'members');
+    elements.holdsView.classList.toggle('active', view === 'holds');
+    elements.cancellationsView.classList.toggle('active', view === 'cancellations');
+    loadActiveViewData();
+  }
+
+  function getViewTitle(view) {
+    if (view === 'members') {
+      return 'Members';
+    }
+    if (view === 'holds') {
+      return 'Holds';
+    }
+    if (view === 'cancellations') {
+      return 'Cancellations';
+    }
+    return 'Dashboard';
+  }
+
+  function loadActiveViewData() {
+    if (state.activeView === 'holds') {
+      loadHolds();
+    } else if (state.activeView === 'cancellations') {
+      loadCancellations();
+    } else if (state.activeView === 'dashboard') {
+      loadDashboard();
+    }
+  }
+
+  function loadDashboard() {
+    const requestLocationKey = state.locationKey;
+    const cachedData = getCachedViewData('dashboard');
+    if (cachedData) {
+      renderDashboard(cachedData);
+      setStatus('Refreshing dashboard...');
+    } else {
+      setStatus('Loading dashboard...');
+      setDashboardLoading();
+    }
+    if (state.loadingViews.dashboard) {
+      return;
+    }
+    state.loadingViews.dashboard = true;
+    google.script.run
+      .withSuccessHandler((data) => {
+        if (requestLocationKey !== state.locationKey) {
+          return;
+        }
+        state.loadingViews.dashboard = false;
+        setCachedViewData('dashboard', data);
+        renderDashboard(data);
+        setStatus('');
+        prefetchHolds();
+        prefetchCancellations();
+      })
+      .withFailureHandler((error) => {
+        if (requestLocationKey !== state.locationKey) {
+          return;
+        }
+        state.loadingViews.dashboard = false;
+        showError(error);
+      })
+      .getDashboardData(state.locationKey);
+  }
+
+  function setDashboardLoading() {
+    elements.metricActive.textContent = '-';
+    elements.metricGreenHolds.textContent = '-';
+    elements.metricYellowHolds.textContent = '-';
+    elements.metricCancelsThisWeek.textContent = '-';
+    elements.dashboardMemberTable.className = 'table-wrap empty-state';
+    elements.dashboardMemberTable.textContent = 'Loading members...';
+    elements.columnMenu.hidden = true;
+    elements.columnMenuButton.setAttribute('aria-expanded', 'false');
+  }
+
+  function renderDashboard(data) {
+    elements.metricActive.textContent = data.summary.active + data.summary.greenHolds;
+    elements.metricGreenHolds.textContent = data.summary.greenHolds;
+    elements.metricYellowHolds.textContent = data.summary.yellowHolds;
+    elements.metricCancelsThisWeek.textContent = data.summary.cancelsThisWeek;
+
+    state.dashboardColumns = data.memberTable.columns;
+    state.dashboardRows = data.memberTable.rows;
+    state.visibleDashboardColumns = restoreVisibleColumns(data.memberTable);
+    renderColumnMenu();
+    renderDashboardTable();
+  }
+
+  function loadHolds() {
+    const requestLocationKey = state.locationKey;
+    const cachedData = getCachedViewData('holds');
+    if (cachedData) {
+      renderHolds(cachedData);
+      setStatus('Refreshing holds...');
+    } else {
+      setStatus('Loading holds...');
+      setHoldsLoading();
+    }
+    if (state.loadingViews.holds) {
+      return;
+    }
+    state.loadingViews.holds = true;
+    google.script.run
+      .withSuccessHandler((data) => {
+        if (requestLocationKey !== state.locationKey) {
+          return;
+        }
+        state.loadingViews.holds = false;
+        setCachedViewData('holds', data);
+        renderHolds(data);
+        setStatus('');
+      })
+      .withFailureHandler((error) => {
+        if (requestLocationKey !== state.locationKey) {
+          return;
+        }
+        state.loadingViews.holds = false;
+        showError(error);
+      })
+      .getHoldsData(state.locationKey);
+  }
+
+  function setHoldsLoading() {
+    elements.greenHoldsCount.textContent = '-';
+    elements.yellowHoldsCount.textContent = '-';
+    elements.greenHoldsTable.className = 'table-wrap empty-state';
+    elements.greenHoldsTable.textContent = 'Loading holds...';
+    elements.yellowHoldsTable.className = 'table-wrap empty-state';
+    elements.yellowHoldsTable.textContent = 'Loading extended holds...';
+  }
+
+  function renderHolds(data) {
+    state.holdsData = data;
+    elements.greenHoldsCount.textContent = data.green.rows.length;
+    elements.yellowHoldsCount.textContent = data.yellow.rows.length;
+    renderStaticTable(elements.greenHoldsTable, data.green.columns, data.green.rows, 'No green holds found.');
+    renderStaticTable(elements.yellowHoldsTable, data.yellow.columns, data.yellow.rows, 'No extended holds found.');
+  }
+
+  function loadCancellations() {
+    const requestLocationKey = state.locationKey;
+    const cachedData = getCachedViewData('cancellations');
+    if (cachedData) {
+      renderCancellations(cachedData);
+      setStatus('Refreshing cancellations...');
+    } else {
+      setStatus('Loading cancellations...');
+      setCancellationsLoading();
+    }
+    if (state.loadingViews.cancellations) {
+      return;
+    }
+    state.loadingViews.cancellations = true;
+    google.script.run
+      .withSuccessHandler((data) => {
+        if (requestLocationKey !== state.locationKey) {
+          return;
+        }
+        state.loadingViews.cancellations = false;
+        setCachedViewData('cancellations', data);
+        renderCancellations(data);
+        setStatus('');
+      })
+      .withFailureHandler((error) => {
+        if (requestLocationKey !== state.locationKey) {
+          return;
+        }
+        state.loadingViews.cancellations = false;
+        showError(error);
+      })
+      .getCancellationsData(state.locationKey);
+  }
+
+  function setCancellationsLoading() {
+    elements.cancellationsTable.className = 'table-wrap empty-state';
+    elements.cancellationsTable.textContent = 'Loading cancellations...';
+    elements.cancellationsColumnMenu.hidden = true;
+    elements.cancellationsColumnMenuButton.setAttribute('aria-expanded', 'false');
+  }
+
+  function renderCancellations(data) {
+    state.cancellationsColumns = data.columns;
+    state.cancellationsRows = data.rows;
+    state.visibleCancellationsColumns = restoreVisibleColumnsForTable(data, 'cancellations');
+    renderCancellationsColumnMenu();
+    renderCancellationsTable();
+  }
+
+  function prefetchHolds() {
+    if (getCachedViewData('holds') || state.loadingViews.holds) {
+      return;
+    }
+    const requestLocationKey = state.locationKey;
+    state.loadingViews.holds = true;
+    google.script.run
+      .withSuccessHandler((data) => {
+        if (requestLocationKey !== state.locationKey) {
+          return;
+        }
+        state.loadingViews.holds = false;
+        setCachedViewData('holds', data);
+        if (state.activeView === 'holds') {
+          renderHolds(data);
+          setStatus('');
+        }
+      })
+      .withFailureHandler(() => {
+        if (requestLocationKey !== state.locationKey) {
+          return;
+        }
+        state.loadingViews.holds = false;
+      })
+      .getHoldsData(state.locationKey);
+  }
+
+  function prefetchCancellations() {
+    if (getCachedViewData('cancellations') || state.loadingViews.cancellations) {
+      return;
+    }
+    const requestLocationKey = state.locationKey;
+    state.loadingViews.cancellations = true;
+    google.script.run
+      .withSuccessHandler((data) => {
+        if (requestLocationKey !== state.locationKey) {
+          return;
+        }
+        state.loadingViews.cancellations = false;
+        setCachedViewData('cancellations', data);
+        if (state.activeView === 'cancellations') {
+          renderCancellations(data);
+          setStatus('');
+        }
+      })
+      .withFailureHandler(() => {
+        if (requestLocationKey !== state.locationKey) {
+          return;
+        }
+        state.loadingViews.cancellations = false;
+      })
+      .getCancellationsData(state.locationKey);
+  }
+
+  function getCachedViewData(view) {
+    const cacheEntry = state.viewCache[getViewCacheKey(view)];
+    return cacheEntry ? cacheEntry.data : null;
+  }
+
+  function setCachedViewData(view, data) {
+    state.viewCache[getViewCacheKey(view)] = {
+      data: data,
+      timestamp: Date.now()
+    };
+  }
+
+  function clearViewCaches() {
+    state.viewCache = {};
+    state.loadingViews = {};
+  }
+
+  function getViewCacheKey(view) {
+    return `${state.locationKey}:${view}`;
+  }
+
+  function renderStaticTable(container, columns, rows, emptyMessage) {
+    if (!rows.length) {
+      container.className = 'table-wrap empty-state';
+      container.textContent = emptyMessage;
+      return;
+    }
+
+    const table = document.createElement('table');
+    table.className = 'member-table hold-table';
+    const thead = document.createElement('thead');
+    const headerRow = document.createElement('tr');
+    columns.forEach((column) => {
+      const th = document.createElement('th');
+      th.textContent = column;
+      headerRow.appendChild(th);
+    });
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    rows.forEach((entry) => {
+      const row = document.createElement('tr');
+      columns.forEach((column) => {
+        const td = document.createElement('td');
+        td.dataset.label = column;
+        renderHoldCell(td, column, entry);
+        row.appendChild(td);
+      });
+      tbody.appendChild(row);
+    });
+    table.appendChild(tbody);
+
+    container.className = 'table-wrap';
+    container.innerHTML = '';
+    container.appendChild(table);
+  }
+
+  function renderHoldCell(cell, column, entry) {
+    const value = entry.fields[column] || '';
+    const isPending = isHoldCellPending(entry, column);
+    if (isPending) {
+      cell.classList.add('pending-cell');
+    }
+
+    if ((column === 'Name' || column === 'Membership Age') && entry.memberId) {
+      cell.classList.add('clickable-cell');
+      cell.tabIndex = 0;
+      cell.textContent = value;
+      cell.addEventListener('click', () => loadMember(entry.memberId));
+      cell.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+          loadMember(entry.memberId);
+        }
+      });
+      return;
+    }
+
+    if (column === 'Membership Status') {
+      const options = entry.holdType === 'green'
+        ? ['Green Hold', 'Active', 'Yellow Hold', 'Cancel']
+        : ['Yellow Hold', 'Active', 'Cancel'];
+      const select = createStatusSelect(value, options, () => {
+        saveHoldEntry(entry, { 'Membership Status': select.value });
+      });
+      select.disabled = isPending;
+      cell.appendChild(select);
+      return;
+    }
+
+    if (column === 'Reason') {
+      const input = document.createElement('input');
+      input.className = 'table-control';
+      input.value = value;
+      input.disabled = isPending;
+      input.addEventListener('blur', () => {
+        if (input.value !== value) {
+          saveHoldEntry(entry, { Reason: input.value });
+        }
+      });
+      cell.appendChild(input);
+      return;
+    }
+
+    if (column === 'Start Date' || column === 'Next Contact' || column === 'Return Date?' || column === 'End of 6-week Nurture') {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'date-cell-control';
+      const pickerButton = document.createElement('button');
+      pickerButton.className = 'date-picker-button';
+      pickerButton.type = 'button';
+      pickerButton.disabled = isPending;
+      pickerButton.textContent = value || 'Select date';
+      pickerButton.addEventListener('click', () => {
+        openInlineDatePicker(entry, column, value, pickerButton);
+      });
+      wrapper.appendChild(pickerButton);
+
+      if (column === 'Next Contact' || column === 'Return Date?' || column === 'End of 6-week Nurture') {
+        const clearButton = document.createElement('button');
+        clearButton.className = 'date-clear-button';
+        clearButton.type = 'button';
+        clearButton.disabled = isPending;
+        clearButton.setAttribute('aria-label', `Clear ${column}`);
+        clearButton.textContent = 'x';
+        clearButton.addEventListener('click', () => {
+          const fieldUpdate = {};
+          fieldUpdate[column] = '-';
+          saveHoldEntry(entry, fieldUpdate);
+        });
+        wrapper.appendChild(clearButton);
+      }
+
+      cell.appendChild(wrapper);
+      return;
+    }
+
+    renderDashboardCell(cell, column, value);
+  }
+
+  function saveHoldEntry(entry, fields) {
+    if (Object.keys(fields).some((fieldName) => isHoldCellPending(entry, fieldName))) {
+      setStatus('Still saving that cell...');
+      return;
+    }
+
+    setHoldCellsPending(entry, fields, true);
+    applyOptimisticHoldUpdate(entry, fields);
+    setStatus('Saving hold...');
+    closeInlineDatePicker();
+    google.script.run
+      .withSuccessHandler((data) => {
+        setHoldCellsPending(entry, fields, false);
+        setCachedViewData('holds', data);
+        renderHolds(data);
+        loadDashboard();
+        setStatus('Hold updated.');
+      })
+      .withFailureHandler((error) => {
+        setHoldCellsPending(entry, fields, false);
+        loadHolds();
+        showError(error);
+      })
+      .updateHoldEntry(state.locationKey, {
+        holdType: entry.holdType,
+        rowNumber: entry.rowNumber,
+        fields: fields
+      });
+  }
+
+  function isHoldCellPending(entry, column) {
+    return Boolean(state.pendingHoldSaves[getHoldCellKey(entry, column)]);
+  }
+
+  function setHoldCellsPending(entry, fields, isPending) {
+    Object.keys(fields).forEach((fieldName) => {
+      const key = getHoldCellKey(entry, fieldName);
+      if (isPending) {
+        state.pendingHoldSaves[key] = true;
+      } else {
+        delete state.pendingHoldSaves[key];
+      }
+    });
+  }
+
+  function getHoldCellKey(entry, column) {
+    return `${entry.rowNumber}:${column}`;
+  }
+
+  function applyOptimisticHoldUpdate(entry, fields) {
+    if (!state.holdsData) {
+      return;
+    }
+
+    const section = entry.holdType === 'yellow' ? state.holdsData.yellow : state.holdsData.green;
+    const targetRow = section.rows.find((row) => row.rowNumber === entry.rowNumber);
+    if (!targetRow) {
+      return;
+    }
+
+    Object.keys(fields).forEach((fieldName) => {
+      targetRow.fields[fieldName] = formatOptimisticHoldValue(fieldName, fields[fieldName]);
+    });
+
+    if (fields['Membership Status'] === 'Active' || fields['Membership Status'] === 'Cancel') {
+      removeOptimisticHoldRow(entry.rowNumber);
+      renderHolds(state.holdsData);
+      return;
+    }
+
+    if (fields['Membership Status'] === 'Yellow Hold' && entry.holdType === 'green') {
+      targetRow.holdType = 'yellow';
+      targetRow.fields['Membership Status'] = 'Yellow Hold';
+      targetRow.fields['Return Date?'] = '-';
+    }
+
+    applyOptimisticHoldDateMath(entry, targetRow);
+
+    renderHolds(state.holdsData);
+  }
+
+  function applyOptimisticHoldDateMath(entry, targetRow) {
+    if (targetRow.fields['Membership Status'] === 'Active' || targetRow.fields['Membership Status'] === 'Cancel') {
+      return;
+    }
+
+    const startInput = displayDateToInputValue(targetRow.fields['Start Date']);
+    const returnValue = targetRow.fields['Return Date?'];
+    const returnInput = returnValue === '-' ? '' : displayDateToInputValue(returnValue);
+    const calculatedType = calculateHoldType(startInput, returnInput);
+
+    if (calculatedType === 'yellow') {
+      targetRow.fields['Membership Status'] = 'Yellow Hold';
+      targetRow.holdType = 'yellow';
+      targetRow.fields['End of 6-week Nurture'] = addDaysToDisplayDate(targetRow.fields['Start Date'], 42);
+      if (entry.holdType === 'green') {
+        removeOptimisticHoldRow(entry.rowNumber);
+        state.holdsData.yellow.rows.unshift(targetRow);
+      }
+    } else {
+      targetRow.fields['Membership Status'] = 'Green Hold';
+      targetRow.holdType = 'green';
+      targetRow.fields['End of 6-week Nurture'] = '';
+      if (entry.holdType === 'yellow') {
+        removeOptimisticHoldRow(entry.rowNumber);
+        state.holdsData.green.rows.unshift(targetRow);
+      }
+    }
+  }
+
+  function removeOptimisticHoldRow(rowNumber) {
+    state.holdsData.green.rows = state.holdsData.green.rows.filter((row) => row.rowNumber !== rowNumber);
+    state.holdsData.yellow.rows = state.holdsData.yellow.rows.filter((row) => row.rowNumber !== rowNumber);
+  }
+
+  function formatOptimisticHoldValue(fieldName, value) {
+    if (value === '-') {
+      return '-';
+    }
+    if (fieldName === 'Start Date' || fieldName === 'Next Contact' || fieldName === 'Return Date?' || fieldName === 'End of 6-week Nurture') {
+      const parsed = parseInputDate(value);
+      if (parsed) {
+        return parsed.toLocaleDateString();
+      }
+    }
+    return value;
+  }
+
+  function addDaysToDisplayDate(value, days) {
+    const inputValue = displayDateToInputValue(value);
+    const date = parseInputDate(inputValue);
+    if (!date) {
+      return '';
+    }
+    date.setDate(date.getDate() + days);
+    return date.toLocaleDateString();
+  }
+
+  function openInlineDatePicker(entry, column, value, anchorElement) {
+    closeInlineDatePicker();
+
+    const selectedDate = parseDisplayOrInputDate(value) || new Date();
+    const pickerState = {
+      entry: entry,
+      column: column,
+      monthDate: new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1),
+      selectedDate: selectedDate
+    };
+
+    const backdrop = document.createElement('div');
+    backdrop.className = 'inline-date-backdrop';
+    backdrop.addEventListener('click', (event) => {
+      if (event.target === backdrop) {
+        closeInlineDatePicker();
+      }
+    });
+
+    const picker = document.createElement('div');
+    picker.className = 'inline-date-picker';
+    backdrop.appendChild(picker);
+    document.body.appendChild(backdrop);
+    elements.inlineDatePicker = backdrop;
+
+    renderInlineDatePicker(picker, pickerState);
+    positionInlineDatePicker(picker, anchorElement);
+  }
+
+  function positionInlineDatePicker(picker, anchorElement) {
+    if (!anchorElement) {
+      return;
+    }
+
+    const gap = 6;
+    const margin = 8;
+    const anchorRect = anchorElement.getBoundingClientRect();
+    const pickerRect = picker.getBoundingClientRect();
+    const left = Math.min(
+      Math.max(anchorRect.left, margin),
+      window.innerWidth - pickerRect.width - margin
+    );
+    const belowTop = anchorRect.bottom + gap;
+    const aboveTop = anchorRect.top - pickerRect.height - gap;
+    const top = belowTop + pickerRect.height + margin <= window.innerHeight
+      ? belowTop
+      : Math.max(aboveTop, margin);
+
+    picker.style.left = `${left}px`;
+    picker.style.top = `${top}px`;
+  }
+
+  function renderInlineDatePicker(container, pickerState) {
+    container.innerHTML = '';
+
+    const header = document.createElement('div');
+    header.className = 'inline-date-header';
+
+    const previousButton = document.createElement('button');
+    previousButton.type = 'button';
+    previousButton.textContent = '<';
+    previousButton.addEventListener('click', () => {
+      pickerState.monthDate.setMonth(pickerState.monthDate.getMonth() - 1);
+      renderInlineDatePicker(container, pickerState);
+    });
+
+    const title = document.createElement('strong');
+    title.textContent = pickerState.monthDate.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+
+    const nextButton = document.createElement('button');
+    nextButton.type = 'button';
+    nextButton.textContent = '>';
+    nextButton.addEventListener('click', () => {
+      pickerState.monthDate.setMonth(pickerState.monthDate.getMonth() + 1);
+      renderInlineDatePicker(container, pickerState);
+    });
+
+    header.appendChild(previousButton);
+    header.appendChild(title);
+    header.appendChild(nextButton);
+    container.appendChild(header);
+
+    const monthsWrap = document.createElement('div');
+    monthsWrap.className = 'inline-date-months';
+    for (let monthOffset = 0; monthOffset < 6; monthOffset += 1) {
+      const monthDate = new Date(
+        pickerState.monthDate.getFullYear(),
+        pickerState.monthDate.getMonth() + monthOffset,
+        1
+      );
+      renderInlineDateMonth(monthsWrap, pickerState, monthDate);
+    }
+    container.appendChild(monthsWrap);
+  }
+
+  function renderInlineDateMonth(container, pickerState, monthDate) {
+    const monthSection = document.createElement('section');
+    monthSection.className = 'inline-date-month';
+
+    const monthTitle = document.createElement('strong');
+    monthTitle.textContent = monthDate.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+    monthSection.appendChild(monthTitle);
+
+    const weekdays = document.createElement('div');
+    weekdays.className = 'inline-date-weekdays';
+    ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].forEach((day) => {
+      const label = document.createElement('span');
+      label.textContent = day;
+      weekdays.appendChild(label);
+    });
+    monthSection.appendChild(weekdays);
+
+    const grid = document.createElement('div');
+    grid.className = 'inline-date-grid';
+    const firstDayOffset = monthDate.getDay();
+    const daysInMonth = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0).getDate();
+
+    for (let i = 0; i < firstDayOffset; i += 1) {
+      grid.appendChild(document.createElement('span'));
+    }
+
+    for (let day = 1; day <= daysInMonth; day += 1) {
+      const date = new Date(monthDate.getFullYear(), monthDate.getMonth(), day);
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = String(day);
+      if (isSameDate(date, pickerState.selectedDate)) {
+        button.className = 'selected';
+      }
+      button.addEventListener('click', () => {
+        const fieldUpdate = {};
+        fieldUpdate[pickerState.column] = formatInputDate(date);
+        saveHoldEntry(pickerState.entry, fieldUpdate);
+      });
+      grid.appendChild(button);
+    }
+    monthSection.appendChild(grid);
+    container.appendChild(monthSection);
+  }
+
+  function closeInlineDatePicker() {
+    if (elements.inlineDatePicker) {
+      elements.inlineDatePicker.remove();
+      elements.inlineDatePicker = null;
+    }
+  }
+
+  function parseDisplayOrInputDate(value) {
+    return parseInputDate(value) || parseDisplayDate(value);
+  }
+
+  function parseDisplayDate(value) {
+    const match = String(value || '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (!match) {
+      return null;
+    }
+    return new Date(Number(match[3]), Number(match[1]) - 1, Number(match[2]));
+  }
+
+  function isSameDate(left, right) {
+    return right &&
+      left.getFullYear() === right.getFullYear() &&
+      left.getMonth() === right.getMonth() &&
+      left.getDate() === right.getDate();
+  }
+
+  function restoreVisibleColumns(memberTable) {
+    return restoreVisibleColumnsForTable(memberTable, 'dashboard');
+  }
+
+  function restoreVisibleColumnsForTable(memberTable, tableKey) {
+    const savedColumns = readSavedColumns(tableKey);
+    if (Array.isArray(savedColumns)) {
+      const validSavedColumns = savedColumns.filter((column) => memberTable.columns.indexOf(column) > -1);
+      if (validSavedColumns.length) {
+        return validSavedColumns;
+      }
+    }
+    return memberTable.defaultVisibleColumns.slice();
+  }
+
+  function renderColumnMenu() {
+    elements.columnMenu.innerHTML = '';
+    state.dashboardColumns.forEach((column) => {
+      const label = document.createElement('label');
+      label.className = 'column-option';
+
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = state.visibleDashboardColumns.indexOf(column) > -1;
+      checkbox.addEventListener('change', () => {
+        toggleDashboardColumn(column, checkbox.checked);
+      });
+
+      const text = document.createElement('span');
+      text.textContent = column;
+
+      label.appendChild(checkbox);
+      label.appendChild(text);
+      elements.columnMenu.appendChild(label);
+    });
+  }
+
+  function renderCancellationsColumnMenu() {
+    elements.cancellationsColumnMenu.innerHTML = '';
+    state.cancellationsColumns.forEach((column) => {
+      const label = document.createElement('label');
+      label.className = 'column-option';
+
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = state.visibleCancellationsColumns.indexOf(column) > -1;
+      checkbox.addEventListener('change', () => {
+        toggleCancellationsColumn(column, checkbox.checked);
+      });
+
+      const text = document.createElement('span');
+      text.textContent = column;
+
+      label.appendChild(checkbox);
+      label.appendChild(text);
+      elements.cancellationsColumnMenu.appendChild(label);
+    });
+  }
+
+  function renderDashboardTable() {
+    if (!state.dashboardRows.length) {
+      elements.dashboardMemberTable.className = 'table-wrap empty-state';
+      elements.dashboardMemberTable.textContent = 'No members found.';
+      return;
+    }
+
+    if (!state.visibleDashboardColumns.length) {
+      elements.dashboardMemberTable.className = 'table-wrap empty-state';
+      elements.dashboardMemberTable.textContent = 'Choose at least one column.';
+      return;
+    }
+
+    const table = document.createElement('table');
+    table.className = 'member-table';
+
+    const thead = document.createElement('thead');
+    const headerRow = document.createElement('tr');
+    state.visibleDashboardColumns.forEach((column) => {
+      const th = document.createElement('th');
+      if (state.dashboardSort.column === column) {
+        th.setAttribute('aria-sort', state.dashboardSort.direction === 'asc' ? 'ascending' : 'descending');
+      }
+      const sortButton = document.createElement('button');
+      sortButton.className = 'table-sort-button';
+      sortButton.type = 'button';
+      sortButton.textContent = column;
+      sortButton.setAttribute('aria-label', `Sort by ${column}`);
+      sortButton.addEventListener('click', () => sortDashboardTable(column));
+
+      if (state.dashboardSort.column === column) {
+        const indicator = document.createElement('span');
+        indicator.className = 'sort-indicator';
+        indicator.innerHTML = state.dashboardSort.direction === 'asc' ? '&uarr;' : '&darr;';
+        sortButton.appendChild(indicator);
+      }
+
+      th.appendChild(sortButton);
+      headerRow.appendChild(th);
+    });
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    getSortedDashboardRows().forEach((member) => {
+      const row = document.createElement('tr');
+      row.tabIndex = 0;
+      row.addEventListener('click', () => loadMember(member.memberId));
+      row.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+          loadMember(member.memberId);
+        }
+      });
+
+      state.visibleDashboardColumns.forEach((column) => {
+        const td = document.createElement('td');
+        td.dataset.label = column;
+        renderDashboardCell(td, column, member.fields[column], member);
+        row.appendChild(td);
+      });
+      tbody.appendChild(row);
+    });
+    table.appendChild(tbody);
+
+    elements.dashboardMemberTable.className = 'table-wrap';
+    elements.dashboardMemberTable.innerHTML = '';
+    elements.dashboardMemberTable.appendChild(table);
+  }
+
+  function renderCancellationsTable() {
+    if (!state.cancellationsRows.length) {
+      elements.cancellationsTable.className = 'table-wrap empty-state';
+      elements.cancellationsTable.textContent = 'No cancellations found.';
+      return;
+    }
+
+    if (!state.visibleCancellationsColumns.length) {
+      elements.cancellationsTable.className = 'table-wrap empty-state';
+      elements.cancellationsTable.textContent = 'Choose at least one column.';
+      return;
+    }
+
+    const table = document.createElement('table');
+    table.className = 'member-table';
+
+    const thead = document.createElement('thead');
+    const headerRow = document.createElement('tr');
+    state.visibleCancellationsColumns.forEach((column) => {
+      const th = document.createElement('th');
+      if (state.cancellationsSort.column === column) {
+        th.setAttribute('aria-sort', state.cancellationsSort.direction === 'asc' ? 'ascending' : 'descending');
+      }
+      const sortButton = document.createElement('button');
+      sortButton.className = 'table-sort-button';
+      sortButton.type = 'button';
+      sortButton.textContent = column;
+      sortButton.setAttribute('aria-label', `Sort by ${column}`);
+      sortButton.addEventListener('click', () => sortCancellationsTable(column));
+
+      if (state.cancellationsSort.column === column) {
+        const indicator = document.createElement('span');
+        indicator.className = 'sort-indicator';
+        indicator.innerHTML = state.cancellationsSort.direction === 'asc' ? '&uarr;' : '&darr;';
+        sortButton.appendChild(indicator);
+      }
+
+      th.appendChild(sortButton);
+      headerRow.appendChild(th);
+    });
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    getSortedCancellationsRows().forEach((entry) => {
+      const row = document.createElement('tr');
+      if (entry.memberId) {
+        row.tabIndex = 0;
+        row.addEventListener('click', () => loadMember(entry.memberId));
+        row.addEventListener('keydown', (event) => {
+          if (event.key === 'Enter') {
+            loadMember(entry.memberId);
+          }
+        });
+      }
+
+      state.visibleCancellationsColumns.forEach((column) => {
+        const td = document.createElement('td');
+        td.dataset.label = column;
+        renderCancellationCell(td, column, entry);
+        row.appendChild(td);
+      });
+      tbody.appendChild(row);
+    });
+    table.appendChild(tbody);
+
+    elements.cancellationsTable.className = 'table-wrap';
+    elements.cancellationsTable.innerHTML = '';
+    elements.cancellationsTable.appendChild(table);
+  }
+
+  function renderCancellationCell(cell, column, entry) {
+    const value = entry.fields[column] || '';
+    if (column === 'Membership Status') {
+      cell.appendChild(createStatusSelect(value || 'Cancel', ['Cancel', 'Active'], (select) => {
+        handleCancellationStatusChange(entry, select);
+      }));
+      return;
+    }
+
+    if ((column === 'Name' || column === 'Membership Age at Cancel') && entry.memberId) {
+      cell.classList.add('clickable-cell');
+    }
+    cell.textContent = value || '';
+  }
+
+  function handleCancellationStatusChange(entry, select) {
+    const nextStatus = select.value;
+    const previousStatus = entry.fields['Membership Status'] || 'Cancel';
+    if (nextStatus === previousStatus) {
+      return;
+    }
+
+    if (nextStatus !== 'Active') {
+      select.value = previousStatus;
+      select.className = `table-control status-select ${getStatusClass(previousStatus.trim().toLowerCase())}`;
+      return;
+    }
+
+    if (!entry.memberId) {
+      select.value = previousStatus;
+      select.className = `table-control status-select ${getStatusClass(previousStatus.trim().toLowerCase())}`;
+      showError('Could not find the matching member row for this cancellation.');
+      return;
+    }
+
+    entry.fields['Membership Status'] = 'Active';
+    renderCancellationsTable();
+    setStatus('Reactivating member...');
+    google.script.run
+      .withSuccessHandler((updatedMember) => {
+        const target = state.cancellationsRows.find((row) => row.rowNumber === entry.rowNumber);
+        if (target) {
+          target.fields['Membership Status'] = updatedMember.fields['Membership Status'];
+        }
+        renderCancellationsTable();
+        loadDashboard();
+        setStatus('Member reactivated.');
+      })
+      .withFailureHandler((error) => {
+        loadCancellations();
+        showError(error);
+      })
+      .setMemberStatus(state.locationKey, {
+        memberId: entry.memberId,
+        status: 'Active',
+        cancellationRowNumber: entry.rowNumber,
+        reactivate: true
+      });
+  }
+
+  function renderDashboardCell(cell, column, value, member) {
+    if (column === 'Membership Status') {
+      if (member && member.memberId) {
+        cell.appendChild(createStatusSelect(value, ['Active', 'Green Hold', 'Yellow Hold', 'Cancel'], (select) => {
+          handleDashboardStatusChange(member, select);
+        }));
+      } else {
+        const pill = document.createElement('span');
+        const normalizedStatus = String(value || '').trim().toLowerCase();
+        pill.className = `status-pill ${getStatusClass(normalizedStatus)}`;
+        pill.textContent = value || '';
+        cell.appendChild(pill);
+      }
+      return;
+    }
+
+    cell.textContent = value || '';
+  }
+
+  function createStatusSelect(value, options, onChange) {
+    const select = document.createElement('select');
+    select.className = `table-control status-select ${getStatusClass(String(value || '').trim().toLowerCase())}`;
+    options.forEach((optionValue) => {
+      const option = document.createElement('option');
+      option.value = optionValue;
+      option.textContent = optionValue;
+      select.appendChild(option);
+    });
+    select.value = value || options[0];
+    select.addEventListener('click', (event) => event.stopPropagation());
+    select.addEventListener('keydown', (event) => event.stopPropagation());
+    select.addEventListener('change', () => {
+      select.className = `table-control status-select ${getStatusClass(select.value.trim().toLowerCase())}`;
+      onChange(select);
+    });
+    return select;
+  }
+
+  function handleDashboardStatusChange(member, select) {
+    const nextStatus = select.value;
+    const previousStatus = member.fields['Membership Status'] || 'Active';
+    if (nextStatus === previousStatus) {
+      return;
+    }
+
+    if (nextStatus === 'Green Hold' || nextStatus === 'Yellow Hold') {
+      select.value = previousStatus;
+      select.className = `table-control status-select ${getStatusClass(previousStatus.trim().toLowerCase())}`;
+      loadMemberForAction(member.memberId, () => openHoldModal(nextStatus));
+      return;
+    }
+
+    if (nextStatus === 'Cancel') {
+      select.value = previousStatus;
+      select.className = `table-control status-select ${getStatusClass(previousStatus.trim().toLowerCase())}`;
+      loadMemberForAction(member.memberId, () => openCancelModal());
+      return;
+    }
+
+    saveDashboardStatus(member, nextStatus);
+  }
+
+  function saveDashboardStatus(member, status) {
+    member.fields['Membership Status'] = status;
+    renderDashboardTable();
+    setStatus('Saving status...');
+    google.script.run
+      .withSuccessHandler((updatedMember) => {
+        const target = state.dashboardRows.find((row) => row.memberId === member.memberId);
+        if (target) {
+          target.fields['Membership Status'] = updatedMember.fields['Membership Status'];
+        }
+        renderDashboardTable();
+        loadDashboard();
+        setStatus('Status updated.');
+      })
+      .withFailureHandler((error) => {
+        loadDashboard();
+        showError(error);
+      })
+      .setMemberStatus(state.locationKey, {
+        memberId: member.memberId,
+        status: status
+      });
+  }
+
+  function getStatusClass(normalizedStatus) {
+    if (normalizedStatus === 'active') {
+      return 'status-active';
+    }
+    if (normalizedStatus === 'green hold') {
+      return 'status-green-hold';
+    }
+    if (normalizedStatus === 'yellow hold') {
+      return 'status-yellow-hold';
+    }
+    if (normalizedStatus === 'cancel') {
+      return 'status-cancel';
+    }
+    return 'status-neutral';
+  }
+
+  function sortDashboardTable(column) {
+    if (state.dashboardSort.column === column) {
+      state.dashboardSort.direction = state.dashboardSort.direction === 'asc' ? 'desc' : 'asc';
+    } else {
+      state.dashboardSort.column = column;
+      state.dashboardSort.direction = 'asc';
+    }
+    renderDashboardTable();
+  }
+
+  function getSortedDashboardRows() {
+    const directionMultiplier = state.dashboardSort.direction === 'asc' ? 1 : -1;
+    return state.dashboardRows.slice().sort((a, b) => {
+      const left = getSortableValue(a.fields[state.dashboardSort.column]);
+      const right = getSortableValue(b.fields[state.dashboardSort.column]);
+
+      if (left.type === 'empty' && right.type === 'empty') {
+        return 0;
+      }
+      if (left.type === 'empty') {
+        return 1;
+      }
+      if (right.type === 'empty') {
+        return -1;
+      }
+      if (left.value < right.value) {
+        return -1 * directionMultiplier;
+      }
+      if (left.value > right.value) {
+        return 1 * directionMultiplier;
+      }
+      return 0;
+    });
+  }
+
+  function sortCancellationsTable(column) {
+    if (state.cancellationsSort.column === column) {
+      state.cancellationsSort.direction = state.cancellationsSort.direction === 'asc' ? 'desc' : 'asc';
+    } else {
+      state.cancellationsSort.column = column;
+      state.cancellationsSort.direction = 'asc';
+    }
+    renderCancellationsTable();
+  }
+
+  function getSortedCancellationsRows() {
+    const directionMultiplier = state.cancellationsSort.direction === 'asc' ? 1 : -1;
+    return state.cancellationsRows.slice().sort((a, b) => {
+      const left = getSortableValue(a.fields[state.cancellationsSort.column]);
+      const right = getSortableValue(b.fields[state.cancellationsSort.column]);
+
+      if (left.type === 'empty' && right.type === 'empty') {
+        return 0;
+      }
+      if (left.type === 'empty') {
+        return 1;
+      }
+      if (right.type === 'empty') {
+        return -1;
+      }
+      if (left.value < right.value) {
+        return -1 * directionMultiplier;
+      }
+      if (left.value > right.value) {
+        return 1 * directionMultiplier;
+      }
+      return 0;
+    });
+  }
+
+  function getSortableValue(value) {
+    const raw = String(value || '').trim();
+    if (!raw) {
+      return { type: 'empty', value: '' };
+    }
+
+    const dateParts = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (dateParts) {
+      return {
+        type: 'date',
+        value: Number(dateParts[3]) * 10000 + Number(dateParts[1]) * 100 + Number(dateParts[2])
+      };
+    }
+
+    const numericValue = Number(raw.replace(/[$,%]/g, ''));
+    if (!isNaN(numericValue) && raw.match(/\d/)) {
+      return { type: 'number', value: numericValue };
+    }
+
+    return { type: 'text', value: raw.toLowerCase() };
+  }
+
+  function toggleDashboardColumn(column, shouldShow) {
+    if (shouldShow) {
+      if (state.visibleDashboardColumns.indexOf(column) === -1) {
+        state.visibleDashboardColumns.push(column);
+      }
+    } else {
+      state.visibleDashboardColumns = state.visibleDashboardColumns.filter((visibleColumn) => visibleColumn !== column);
+    }
+    saveDashboardColumns();
+    renderDashboardTable();
+  }
+
+  function toggleCancellationsColumn(column, shouldShow) {
+    if (shouldShow) {
+      if (state.visibleCancellationsColumns.indexOf(column) === -1) {
+        state.visibleCancellationsColumns.push(column);
+      }
+    } else {
+      state.visibleCancellationsColumns = state.visibleCancellationsColumns.filter((visibleColumn) => visibleColumn !== column);
+    }
+    saveColumns('cancellations', state.visibleCancellationsColumns);
+    renderCancellationsTable();
+  }
+
+  function toggleColumnMenu() {
+    const willOpen = elements.columnMenu.hidden;
+    elements.columnMenu.hidden = !willOpen;
+    elements.columnMenuButton.setAttribute('aria-expanded', String(willOpen));
+  }
+
+  function toggleCancellationsColumnMenu() {
+    const willOpen = elements.cancellationsColumnMenu.hidden;
+    elements.cancellationsColumnMenu.hidden = !willOpen;
+    elements.cancellationsColumnMenuButton.setAttribute('aria-expanded', String(willOpen));
+  }
+
+  function closeColumnMenuOnOutsideClick(event) {
+    if (
+      !elements.columnMenu.hidden &&
+      !elements.columnMenu.contains(event.target) &&
+      !elements.columnMenuButton.contains(event.target)
+    ) {
+      elements.columnMenu.hidden = true;
+      elements.columnMenuButton.setAttribute('aria-expanded', 'false');
+    }
+
+    if (
+      !elements.cancellationsColumnMenu.hidden &&
+      !elements.cancellationsColumnMenu.contains(event.target) &&
+      !elements.cancellationsColumnMenuButton.contains(event.target)
+    ) {
+      elements.cancellationsColumnMenu.hidden = true;
+      elements.cancellationsColumnMenuButton.setAttribute('aria-expanded', 'false');
+    }
+  }
+
+  function getColumnStorageKey() {
+    return getTableColumnStorageKey('dashboard');
+  }
+
+  function getTableColumnStorageKey(tableKey) {
+    return `flexx-${tableKey}-columns:${state.locationKey}`;
+  }
+
+  function readSavedDashboardColumns() {
+    return readSavedColumns('dashboard');
+  }
+
+  function readSavedColumns(tableKey) {
+    try {
+      return JSON.parse(localStorage.getItem(getTableColumnStorageKey(tableKey)) || 'null');
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function saveDashboardColumns() {
+    saveColumns('dashboard', state.visibleDashboardColumns);
+  }
+
+  function saveColumns(tableKey, columns) {
+    try {
+      localStorage.setItem(getTableColumnStorageKey(tableKey), JSON.stringify(columns));
+    } catch (error) {
+      return;
+    }
+  }
+
+  function handleGlobalSearchInput() {
+    const query = elements.globalSearchInput.value.trim();
+    window.clearTimeout(state.globalSearchTimer);
+    state.globalSearchRequestId += 1;
+
+    if (query.length < 2) {
+      clearGlobalSearchResults();
+      return;
+    }
+
+    const requestId = state.globalSearchRequestId;
+    state.globalSearchTimer = window.setTimeout(() => {
+      renderGlobalSearchLoading();
+      const requestLocationKey = state.locationKey;
+      google.script.run
+        .withSuccessHandler((results) => {
+          if (requestId !== state.globalSearchRequestId || requestLocationKey !== state.locationKey) {
+            return;
+          }
+          renderGlobalSearchResults(results);
+        })
+        .withFailureHandler((error) => {
+          if (requestId !== state.globalSearchRequestId) {
+            return;
+          }
+          renderGlobalSearchMessage(error.message || 'Search failed.');
+        })
+        .searchAllMembersAndCancels(state.locationKey, query);
+    }, 180);
+  }
+
+  function handleGlobalSearchKeydown(event) {
+    if (event.key === 'Escape') {
+      clearGlobalSearchResults();
+      elements.globalSearchInput.blur();
+      return;
+    }
+
+    if (event.key === 'Enter') {
+      const firstResult = elements.globalSearchResults.querySelector('.global-search-item');
+      if (firstResult) {
+        event.preventDefault();
+        firstResult.click();
+      }
+    }
+  }
+
+  function renderGlobalSearchLoading() {
+    renderGlobalSearchMessage('Searching...');
+  }
+
+  function renderGlobalSearchMessage(message) {
+    elements.globalSearchResults.hidden = false;
+    elements.globalSearchResults.className = 'global-search-results';
+    elements.globalSearchResults.innerHTML = `<div class="global-search-message">${escapeHtml(message)}</div>`;
+  }
+
+  function renderGlobalSearchResults(results) {
+    if (!results || !results.length) {
+      renderGlobalSearchMessage('No matching members found.');
+      return;
+    }
+
+    elements.globalSearchResults.hidden = false;
+    elements.globalSearchResults.className = 'global-search-results';
+    elements.globalSearchResults.innerHTML = '';
+
+    results.forEach((result) => {
+      const button = document.createElement('button');
+      button.className = 'global-search-item';
+      button.type = 'button';
+      button.innerHTML = `
+        <span class="global-search-primary">
+          <span class="item-title">${escapeHtml(result.name || 'Unnamed member')}</span>
+          <span class="item-meta">${escapeHtml(result.meta || result.membershipStatus || '')}</span>
+        </span>
+        <span class="global-search-secondary">
+          <span class="status-pill ${getStatusClass(String(result.membershipStatus || '').trim().toLowerCase())}">
+            ${escapeHtml(result.membershipStatus || result.source || '')}
+          </span>
+          <span class="search-source-pill">${escapeHtml(result.source || '')}</span>
+        </span>
+      `;
+      button.addEventListener('click', () => {
+        elements.globalSearchInput.value = '';
+        clearGlobalSearchResults();
+        if (result.memberId) {
+          loadMember(result.memberId);
+        }
+      });
+      elements.globalSearchResults.appendChild(button);
+    });
+  }
+
+  function clearGlobalSearchResults() {
+    window.clearTimeout(state.globalSearchTimer);
+    elements.globalSearchResults.hidden = true;
+    elements.globalSearchResults.innerHTML = '';
+  }
+
+  function closeGlobalSearchOnOutsideClick(event) {
+    if (!elements.globalSearchInput.contains(event.target) && !elements.globalSearchResults.contains(event.target)) {
+      clearGlobalSearchResults();
+    }
+  }
+
+  function runSearch() {
+    const query = elements.memberSearchInput.value.trim();
+    if (!query) {
+      clearSearchResults();
+      return;
+    }
+
+    switchView('members');
+    setStatus('Searching...');
+    elements.memberSearchButton.disabled = true;
+    elements.searchResults.className = 'list empty-state';
+    elements.searchResults.textContent = 'Searching members...';
+
+    google.script.run
+      .withSuccessHandler((results) => {
+        elements.memberSearchButton.disabled = false;
+        renderSearchResults(results);
+        setStatus('');
+      })
+      .withFailureHandler((error) => {
+        elements.memberSearchButton.disabled = false;
+        showError(error);
+      })
+      .searchMembers(state.locationKey, query);
+  }
+
+  function renderSearchResults(results) {
+    if (!results.length) {
+      elements.searchResults.className = 'list empty-state';
+      elements.searchResults.textContent = 'No matching members found.';
+      return;
+    }
+
+    elements.searchResults.className = 'list';
+    elements.searchResults.innerHTML = '';
+    results.forEach((member) => {
+      elements.searchResults.appendChild(createMemberListButton(member));
+    });
+  }
+
+  function createMemberListButton(member) {
+    const button = document.createElement('button');
+    button.className = 'list-item';
+    button.type = 'button';
+    button.innerHTML = `
+      <span>
+        <span class="item-title">${escapeHtml(member.name || 'Unnamed member')}</span>
+        <span class="item-meta">${escapeHtml(member.membershipStatus || '')}</span>
+      </span>
+      <span class="item-meta">#${member.memberId}</span>
+    `;
+    button.addEventListener('click', () => loadMember(member.memberId));
+    return button;
+  }
+
+  function loadMember(memberId) {
+    setStatus('Loading member...');
+    elements.memberModal.hidden = false;
+    elements.memberProfile.className = 'profile-form empty-state';
+    elements.memberProfile.textContent = 'Loading member profile...';
+    elements.saveMemberButton.disabled = true;
+    elements.holdMemberButton.disabled = true;
+    elements.cancelMemberButton.disabled = true;
+
+    google.script.run
+      .withSuccessHandler((member) => {
+        state.selectedMember = member;
+        state.dirty = false;
+        renderMemberProfile(member);
+        updateProfileActions();
+        setStatus('');
+      })
+      .withFailureHandler(showError)
+      .getMember(state.locationKey, memberId);
+  }
+
+  function loadMemberForAction(memberId, onLoaded) {
+    setStatus('Loading member...');
+    google.script.run
+      .withSuccessHandler((member) => {
+        state.selectedMember = member;
+        state.dirty = false;
+        updateProfileActions();
+        setStatus('');
+        if (typeof onLoaded === 'function') {
+          onLoaded(member);
+        }
+      })
+      .withFailureHandler(showError)
+      .getMember(state.locationKey, memberId);
+  }
+
+  function closeMemberModal() {
+    if (state.saving || state.holding) {
+      return;
+    }
+    elements.memberModal.hidden = true;
+  }
+
+  function renderMemberProfile(member) {
+    elements.memberProfile.className = 'profile-form';
+    elements.memberProfile.innerHTML = '';
+
+    Object.keys(member.fields).forEach((fieldName) => {
+      const value = member.fields[fieldName] || '';
+      const isEditable = member.editableFields.indexOf(fieldName) > -1;
+      const wrapper = document.createElement('div');
+      wrapper.className = fieldName === 'Notes' || fieldName === 'Reason/Solution' ? 'form-field full' : 'form-field';
+
+      const label = document.createElement('label');
+      label.textContent = fieldName;
+      wrapper.appendChild(label);
+
+      wrapper.appendChild(isEditable ? createProfileInput(fieldName, value) : createReadOnlyProfileValue(fieldName, value));
+
+      elements.memberProfile.appendChild(wrapper);
+    });
+
+    updateSaveButton();
+    updateProfileActions();
+  }
+
+  function createProfileInput(fieldName, value) {
+    if (fieldName === 'Days Per Week') {
+      return createSelectInput(fieldName, value, ['', '1x/Week', '2x/Week', '3x/Week', '4x/Week']);
+    }
+    if (fieldName === 'Payment Option') {
+      return createSelectInput(fieldName, value, ['', 'Monthly', 'Bi-weekly', 'Weekly']);
+    }
+    if (isBooleanProfileField(fieldName)) {
+      return createBooleanToggle(fieldName, value);
+    }
+    if (fieldName === 'Start Date') {
+      const input = document.createElement('input');
+      input.className = 'input';
+      input.type = 'date';
+      input.value = displayDateToInputValue(value);
+      input.dataset.field = fieldName;
+      input.addEventListener('input', markDirty);
+      return input;
+    }
+
+    const input = fieldName === 'Notes' || fieldName === 'Reason/Solution' ? document.createElement('textarea') : document.createElement('input');
+    input.className = fieldName === 'Notes' || fieldName === 'Reason/Solution' ? 'textarea' : 'input';
+    input.value = value;
+    input.dataset.field = fieldName;
+    input.addEventListener('input', markDirty);
+    return input;
+  }
+
+  function createSelectInput(fieldName, value, options) {
+    const select = document.createElement('select');
+    select.className = 'select';
+    select.dataset.field = fieldName;
+    options.forEach((optionValue) => {
+      const option = document.createElement('option');
+      option.value = optionValue;
+      option.textContent = optionValue || 'Select';
+      select.appendChild(option);
+    });
+    select.value = value;
+    select.addEventListener('change', markDirty);
+    return select;
+  }
+
+  function createBooleanToggle(fieldName, value) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'yes-no-toggle';
+
+    const input = document.createElement('input');
+    input.type = 'hidden';
+    input.dataset.field = fieldName;
+    input.value = getBooleanFieldValue(fieldName, normalizeBoolean(value));
+    wrapper.appendChild(input);
+
+    [
+      { label: 'No', active: false },
+      { label: 'Yes', active: true }
+    ].forEach((option) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = option.label;
+      button.setAttribute('aria-pressed', String(normalizeBoolean(input.value) === option.active));
+      button.addEventListener('click', () => {
+        input.value = getBooleanFieldValue(fieldName, option.active);
+        wrapper.querySelectorAll('button').forEach((toggleButton) => {
+          toggleButton.setAttribute('aria-pressed', String(toggleButton === button));
+        });
+        markDirty();
+      });
+      wrapper.appendChild(button);
+    });
+
+    return wrapper;
+  }
+
+  function isBooleanProfileField(fieldName) {
+    return fieldName === 'Recurring' || fieldName === 'Reactivation';
+  }
+
+  function getBooleanFieldValue(fieldName, isActive) {
+    if (fieldName === 'Recurring') {
+      return isActive ? 'true' : 'false';
+    }
+    return isActive ? 'Yes' : 'No';
+  }
+
+  function createReadOnlyProfileValue(fieldName, value) {
+    const readOnly = document.createElement('div');
+    readOnly.className = 'readonly-value';
+    if (fieldName === 'Membership Status') {
+      renderDashboardCell(readOnly, fieldName, value);
+    } else {
+      readOnly.textContent = value;
+    }
+    return readOnly;
+  }
+
+  function markDirty() {
+    state.dirty = true;
+    updateSaveButton();
+  }
+
+  function updateSaveButton() {
+    elements.saveMemberButton.disabled = !state.selectedMember || !state.dirty || state.saving;
+    elements.saveMemberButton.textContent = state.saving ? 'Saving...' : 'Save';
+  }
+
+  function updateProfileActions() {
+    const status = getSelectedMemberStatus();
+    elements.holdMemberButton.disabled = !state.selectedMember || state.saving || state.holding;
+    elements.cancelMemberButton.disabled = !state.selectedMember || state.saving || state.holding || status === 'cancel';
+    elements.holdMemberButton.textContent = state.holding ? 'Saving Hold...' : (isSelectedMemberOnHold() ? 'Edit Hold' : 'Put on Hold');
+  }
+
+  function saveMember(onSuccess) {
+    if (!state.selectedMember || state.saving) {
+      return;
+    }
+
+    const fields = {};
+    elements.memberProfile.querySelectorAll('[data-field]').forEach((input) => {
+      fields[input.dataset.field] = input.type === 'checkbox' ? input.checked : input.value;
+    });
+
+    state.saving = true;
+    updateSaveButton();
+    updateProfileActions();
+    setStatus('Saving changes...');
+
+    google.script.run
+      .withSuccessHandler((member) => {
+        state.selectedMember = member;
+        state.dirty = false;
+        state.saving = false;
+        renderMemberProfile(member);
+        updateProfileActions();
+        loadActiveViewData();
+        setStatus('Saved.');
+        if (typeof onSuccess === 'function') {
+          onSuccess(member);
+        }
+      })
+      .withFailureHandler((error) => {
+        state.saving = false;
+        updateSaveButton();
+        updateProfileActions();
+        showError(error);
+      })
+      .saveMemberChanges(state.locationKey, {
+        memberId: state.selectedMember.memberId,
+        fields: fields
+      });
+  }
+
+  function clearMemberProfile() {
+    state.selectedMember = null;
+    elements.memberModal.hidden = true;
+    elements.memberProfile.className = 'profile-form empty-state';
+    elements.memberProfile.textContent = 'Select a member to view details.';
+    elements.saveMemberButton.disabled = true;
+    elements.holdMemberButton.disabled = true;
+    elements.cancelMemberButton.disabled = true;
+  }
+
+  function bindYesNoToggle(wrapper, initialValue, onChange) {
+    setYesNoToggleValue(wrapper, initialValue);
+    wrapper.querySelectorAll('button').forEach((button) => {
+      button.addEventListener('click', () => {
+        const isActive = button.dataset.value === 'true';
+        setYesNoToggleValue(wrapper, isActive);
+        if (typeof onChange === 'function') {
+          onChange(isActive);
+        }
+      });
+    });
+  }
+
+  function setYesNoToggleValue(wrapper, isActive) {
+    wrapper.querySelectorAll('button').forEach((button) => {
+      button.setAttribute('aria-pressed', String((button.dataset.value === 'true') === Boolean(isActive)));
+    });
+  }
+
+  function getYesNoToggleValue(wrapper) {
+    const selected = wrapper.querySelector('button[aria-pressed="true"]');
+    return selected ? selected.dataset.value === 'true' : false;
+  }
+
+  function openAddMemberModal() {
+    state.addingMember = false;
+    updateAddMemberButtons();
+    elements.addMemberForm.reset();
+    elements.addStartDateInput.value = getTodayInputValue();
+    elements.addDaysPerWeekInput.value = '2x/Week';
+    elements.addPaymentOptionInput.value = 'Monthly';
+    setYesNoToggleValue(elements.addTrialToggle, false);
+    setYesNoToggleValue(elements.addReferralToggle, false);
+    setYesNoToggleValue(elements.addRecurringToggle, false);
+    elements.addTrialDateField.hidden = true;
+    elements.addReferralMemberField.hidden = true;
+    elements.addMemberModalError.textContent = '';
+    elements.addMemberModal.hidden = false;
+    elements.addFirstNameInput.focus();
+  }
+
+  function closeAddMemberModal() {
+    if (state.addingMember) {
+      return;
+    }
+    elements.addMemberModal.hidden = true;
+    elements.addMemberModalError.textContent = '';
+  }
+
+  function submitAddMemberForm(event) {
+    event.preventDefault();
+    if (state.addingMember) {
+      return;
+    }
+
+    if (!elements.addMemberForm.reportValidity()) {
+      return;
+    }
+
+    state.addingMember = true;
+    updateAddMemberButtons();
+    setStatus('Adding member...');
+
+    google.script.run
+      .withSuccessHandler((member) => {
+        state.addingMember = false;
+        closeAddMemberModal();
+        clearViewCaches();
+        state.selectedMember = member;
+        state.dirty = false;
+        elements.memberModal.hidden = false;
+        renderMemberProfile(member);
+        updateProfileActions();
+        loadActiveViewData();
+        setStatus('Member added.');
+      })
+      .withFailureHandler((error) => {
+        state.addingMember = false;
+        updateAddMemberButtons();
+        elements.addMemberModalError.textContent = error && error.message ? error.message : String(error || 'Could not add member.');
+        showError(error);
+      })
+      .addMemberFromWebApp(state.locationKey, {
+        firstName: elements.addFirstNameInput.value.trim(),
+        lastName: elements.addLastNameInput.value.trim(),
+        daysPerWeek: elements.addDaysPerWeekInput.value,
+        paymentOption: elements.addPaymentOptionInput.value,
+        pricePoint: elements.addPricePointInput.value,
+        startDate: elements.addStartDateInput.value,
+        trial: getYesNoToggleValue(elements.addTrialToggle),
+        trialDate: elements.addTrialDateInput.value,
+        referral: getYesNoToggleValue(elements.addReferralToggle),
+        referralMember: elements.addReferralMemberInput.value.trim(),
+        recurring: getYesNoToggleValue(elements.addRecurringToggle),
+        notes: elements.addNotesInput.value.trim()
+      });
+  }
+
+  function updateAddMemberButtons() {
+    elements.submitAddMemberButton.disabled = state.addingMember;
+    elements.cancelAddMemberButton.disabled = state.addingMember;
+    elements.closeAddMemberModalButton.disabled = state.addingMember;
+    elements.submitAddMemberButton.textContent = state.addingMember ? 'Adding...' : 'Add Member';
+  }
+
+  function handleHoldAction() {
+    if (isSelectedMemberOnHold()) {
+      saveMemberAndOpenHolds();
+      return;
+    }
+    openHoldModal();
+  }
+
+  function saveMemberAndOpenHolds() {
+    if (!state.selectedMember) {
+      return;
+    }
+    const afterSave = function () {
+      closeMemberModal();
+      switchView('holds');
+    };
+    if (!state.dirty) {
+      afterSave();
+      return;
+    }
+    saveMember(afterSave);
+  }
+
+  function openHoldModal(defaultStatus) {
+    if (!state.selectedMember) {
+      return;
+    }
+
+    elements.holdForm.reset();
+    elements.holdReasonInput.value = state.selectedMember.fields['Reason/Solution'] || '';
+    elements.holdStartDateInput.value = getTodayInputValue();
+    elements.holdReturnDateInput.value = defaultStatus === 'Green Hold'
+      ? addDaysToInputDate(elements.holdStartDateInput.value, 14)
+      : '';
+    elements.holdModalError.textContent = '';
+    updateHoldModalFields();
+    elements.holdModal.hidden = false;
+    elements.holdReasonInput.focus();
+  }
+
+  function openCancelModal() {
+    if (!state.selectedMember) {
+      return;
+    }
+    elements.cancelForm.reset();
+    elements.cancelReasonInput.value = state.selectedMember.fields['Reason/Solution'] || '';
+    elements.cancelDateInput.value = getTodayInputValue();
+    elements.cancelModalError.textContent = '';
+    elements.cancelModal.hidden = false;
+    elements.cancelReasonInput.focus();
+  }
+
+  function closeCancelModal() {
+    if (state.saving) {
+      return;
+    }
+    elements.cancelModal.hidden = true;
+    elements.cancelModalError.textContent = '';
+  }
+
+  function submitCancelForm(event) {
+    event.preventDefault();
+    if (!state.selectedMember || state.saving) {
+      return;
+    }
+
+    const reason = elements.cancelReasonInput.value.trim();
+    if (!reason) {
+      elements.cancelModalError.textContent = 'Reason is required.';
+      elements.cancelReasonInput.focus();
+      return;
+    }
+
+    state.saving = true;
+    updateCancelButtons();
+    updateProfileActions();
+    setStatus('Canceling membership...');
+
+    google.script.run
+      .withSuccessHandler((member) => {
+        state.saving = false;
+        state.selectedMember = member;
+        state.dirty = false;
+        closeCancelModal();
+        renderMemberProfile(member);
+        updateCancelButtons();
+        updateProfileActions();
+        loadActiveViewData();
+        setStatus('Membership canceled.');
+      })
+      .withFailureHandler((error) => {
+        state.saving = false;
+        updateCancelButtons();
+        updateProfileActions();
+        elements.cancelModalError.textContent = error && error.message ? error.message : String(error || 'Could not cancel membership.');
+        showError(error);
+      })
+      .cancelMember(state.locationKey, {
+        memberId: state.selectedMember.memberId,
+        reason: reason,
+        solution: elements.cancelSolutionInput.value.trim(),
+        cancelDate: elements.cancelDateInput.value
+      });
+  }
+
+  function updateCancelButtons() {
+    elements.submitCancelButton.disabled = state.saving;
+    elements.cancelCancelButton.disabled = state.saving;
+    elements.closeCancelModalButton.disabled = state.saving;
+    elements.submitCancelButton.textContent = state.saving ? 'Canceling...' : 'Cancel Membership';
+  }
+
+  function closeHoldModal() {
+    if (state.holding) {
+      return;
+    }
+    elements.holdModal.hidden = true;
+    elements.holdModalError.textContent = '';
+  }
+
+  function updateHoldModalFields() {
+    const holdType = calculateHoldType(elements.holdStartDateInput.value, elements.holdReturnDateInput.value);
+    const isYellowHold = holdType === 'yellow';
+    elements.holdEndNurtureField.hidden = !isYellowHold;
+    elements.holdCalculatedStatus.textContent = isYellowHold ? 'Yellow Hold' : 'Green Hold';
+
+    if (isYellowHold) {
+      elements.holdEndNurtureInput.value = addDaysToInputDate(elements.holdStartDateInput.value, 42);
+    } else {
+      elements.holdEndNurtureInput.value = '';
+    }
+    elements.holdNextContactInput.value = getDefaultNextContactDate(elements.holdStartDateInput.value, holdType);
+  }
+
+  function submitHoldForm(event) {
+    event.preventDefault();
+    if (!state.selectedMember || state.holding) {
+      return;
+    }
+
+    const reason = elements.holdReasonInput.value.trim();
+    if (!reason) {
+      elements.holdModalError.textContent = 'Reason is required.';
+      elements.holdReasonInput.focus();
+      return;
+    }
+
+    state.holding = true;
+    updateHoldButtons();
+    updateProfileActions();
+    setStatus('Saving hold...');
+
+    google.script.run
+      .withSuccessHandler((result) => {
+        state.holding = false;
+        state.selectedMember = result.member;
+        state.dirty = false;
+        closeHoldModal();
+        renderMemberProfile(result.member);
+        updateHoldButtons();
+        updateProfileActions();
+        loadActiveViewData();
+        setStatus('Hold saved.');
+      })
+      .withFailureHandler((error) => {
+        state.holding = false;
+        updateHoldButtons();
+        updateProfileActions();
+        elements.holdModalError.textContent = error && error.message ? error.message : String(error || 'Could not save hold.');
+        showError(error);
+      })
+      .putMemberOnHold(state.locationKey, {
+        memberId: state.selectedMember.memberId,
+        reason: reason,
+        startDate: elements.holdStartDateInput.value,
+        nextContact: elements.holdNextContactInput.value,
+        returnDate: elements.holdReturnDateInput.value,
+        endOfNurture: elements.holdEndNurtureInput.value
+      });
+  }
+
+  function updateHoldButtons() {
+    elements.submitHoldButton.disabled = state.holding;
+    elements.cancelHoldButton.disabled = state.holding;
+    elements.closeHoldModalButton.disabled = state.holding;
+    elements.submitHoldButton.textContent = state.holding ? 'Saving...' : 'Save Hold';
+  }
+
+  function calculateHoldType(startDateValue, returnDateValue) {
+    if (!returnDateValue) {
+      return 'yellow';
+    }
+
+    const startDate = parseInputDate(startDateValue);
+    const returnDate = parseInputDate(returnDateValue);
+    if (!startDate || !returnDate) {
+      return 'yellow';
+    }
+
+    const days = Math.round((returnDate.getTime() - startDate.getTime()) / 86400000);
+    return days >= 28 ? 'yellow' : 'green';
+  }
+
+  function getDefaultNextContactDate(startDateValue, holdType) {
+    const startDate = parseInputDate(startDateValue) || new Date();
+    const nextFriday = getNextFridayOnOrAfter(startDate);
+    if (holdType === 'yellow') {
+      nextFriday.setDate(nextFriday.getDate() + 7);
+    }
+    return formatInputDate(nextFriday);
+  }
+
+  function getNextFridayOnOrAfter(date) {
+    const nextFriday = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const daysUntilFriday = (5 - nextFriday.getDay() + 7) % 7;
+    nextFriday.setDate(nextFriday.getDate() + daysUntilFriday);
+    return nextFriday;
+  }
+
+  function addDaysToInputDate(dateValue, days) {
+    const date = parseInputDate(dateValue);
+    if (!date) {
+      return '';
+    }
+    date.setDate(date.getDate() + days);
+    return formatInputDate(date);
+  }
+
+  function parseInputDate(value) {
+    const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) {
+      return null;
+    }
+    return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  }
+
+  function formatInputDate(date) {
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${date.getFullYear()}-${month}-${day}`;
+  }
+
+  function getTodayInputValue() {
+    const now = new Date();
+    return formatInputDate(now);
+  }
+
+  function displayDateToInputValue(value) {
+    const match = String(value || '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (!match) {
+      return '';
+    }
+    return `${match[3]}-${String(match[1]).padStart(2, '0')}-${String(match[2]).padStart(2, '0')}`;
+  }
+
+  function normalizeBoolean(value) {
+    const normalized = String(value || '').trim().toLowerCase();
+    return value === true || normalized === 'true' || normalized === 'yes' || normalized === 'y';
+  }
+
+  function getSelectedMemberStatus() {
+    return String(state.selectedMember && state.selectedMember.fields['Membership Status'] || '').trim().toLowerCase();
+  }
+
+  function isSelectedMemberOnHold() {
+    const status = getSelectedMemberStatus();
+    return status === 'green hold' || status === 'yellow hold';
+  }
+
+  function clearSearchResults() {
+    elements.searchResults.className = 'list empty-state';
+    elements.searchResults.textContent = 'Search for a member to begin.';
+  }
+
+  function updateUrlLocation() {
+    const url = new URL(window.location.href);
+    url.searchParams.set('location', state.locationKey);
+    window.history.replaceState({}, '', url.toString());
+  }
+
+  function setStatus(message) {
+    elements.globalStatus.classList.remove('error');
+    elements.globalStatus.textContent = message || '';
+  }
+
+  function showError(error) {
+    const message = error && error.message ? error.message : String(error || 'Something went wrong.');
+    elements.globalStatus.classList.add('error');
+    elements.globalStatus.textContent = message;
+  }
+
+  function escapeHtml(value) {
+    return String(value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+</script>

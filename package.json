@@ -1,0 +1,17 @@
+{
+  "name": "flexx-staff",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Flexx staff Google Apps Script web app.",
+  "scripts": {
+    "login": "clasp login",
+    "pull": "clasp pull",
+    "push": "clasp push",
+    "open": "clasp open-script",
+    "status": "clasp status",
+    "logs": "clasp logs"
+  },
+  "devDependencies": {
+    "@google/clasp": "^3.0.6"
+  }
+}

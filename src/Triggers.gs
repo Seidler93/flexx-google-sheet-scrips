@@ -4,6 +4,7 @@ function onOpen() {
     .addItem('Open Staff Dashboard', 'openStaffDashboard')
     .addItem('Import Attendance', 'showSessionModal')
     .addItem('Update Weekly Data', 'updateWeeklyDataSnapshotsForAllLocations')
+    .addItem('Backfill Member IDs', 'backfillMemberIdsFromMenu')
     .addItem('Install Status Edit Triggers', 'setupMembershipStatusEditTriggers')
     .addToUi();
 }
@@ -29,6 +30,20 @@ function showSessionModal() {
     .setWidth(500)
     .setHeight(700);
   SpreadsheetApp.getUi().showModalDialog(html, 'Import Session Data');
+}
+
+function backfillMemberIdsFromMenu() {
+  var spreadsheetId = SpreadsheetApp.getActive().getId();
+  var locationKey = FLEXX_CONFIG.findLocationKeyBySpreadsheetId(spreadsheetId);
+  var result = locationKey
+    ? {
+      members: backfillMemberIdsForLocation_(locationKey),
+      cancellations: backfillCancellationMemberIdsForLocation_(locationKey)
+    }
+    : backfillMemberIdsForAllLocations();
+
+  SpreadsheetApp.getUi().alert('Member ID backfill complete:\n\n' + JSON.stringify(result, null, 2));
+  return result;
 }
 
 function onEdit(e) {

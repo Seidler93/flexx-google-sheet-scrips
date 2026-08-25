@@ -1,4 +1,6 @@
 <script>
+  const LOCATION_STORAGE_KEY = 'flexx-last-location-key';
+
   const state = {
     config: null,
     locationKey: window.FLEXX_INITIAL_LOCATION_KEY,
@@ -176,6 +178,7 @@
 
     elements.locationSelect.addEventListener('change', () => {
       state.locationKey = elements.locationSelect.value;
+      saveLastLocationKey(state.locationKey);
       state.selectedMember = null;
       state.dirty = false;
       state.loadingViews = {};
@@ -259,13 +262,54 @@
     google.script.run
       .withSuccessHandler((config) => {
         state.config = config;
-        state.locationKey = config.selectedLocationKey || config.defaultLocationKey;
+        state.locationKey = getInitialLocationKey(config);
+        saveLastLocationKey(state.locationKey);
         renderLocations();
         renderLocationLabel();
         loadDashboard();
       })
       .withFailureHandler(showError)
       .getAppConfig(state.locationKey);
+  }
+
+  function getInitialLocationKey(config) {
+    const requestedLocationKey = getUrlLocationKey();
+    if (requestedLocationKey && config.locations.some((location) => location.key === requestedLocationKey)) {
+      return requestedLocationKey;
+    }
+
+    const savedLocationKey = getSavedLastLocationKey();
+    if (savedLocationKey && config.locations.some((location) => location.key === savedLocationKey)) {
+      return savedLocationKey;
+    }
+
+    return config.selectedLocationKey || config.defaultLocationKey;
+  }
+
+  function getUrlLocationKey() {
+    try {
+      return new URLSearchParams(window.location.search).get('location') || '';
+    } catch (error) {
+      return '';
+    }
+  }
+
+  function getSavedLastLocationKey() {
+    try {
+      return localStorage.getItem(LOCATION_STORAGE_KEY) || '';
+    } catch (error) {
+      return '';
+    }
+  }
+
+  function saveLastLocationKey(locationKey) {
+    try {
+      if (locationKey) {
+        localStorage.setItem(LOCATION_STORAGE_KEY, locationKey);
+      }
+    } catch (error) {
+      // Local storage can be unavailable in some embedded browser modes.
+    }
   }
 
   function renderLocations() {

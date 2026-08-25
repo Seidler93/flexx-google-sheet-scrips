@@ -2129,8 +2129,14 @@ function buildDashboardMemberTable_(headers, rows, firstDataRow) {
         memberId: firstDataRow + index,
         fields: fields
       };
+    }).filter(function (entry) {
+      return isDashboardMemberStatus_(entry.fields['Membership Status']);
     })
   };
+}
+
+function isDashboardMemberStatus_(status) {
+  return String(status || '').trim().toLowerCase() !== 'cancel';
 }
 
 function appendHoldRow_(sheet, holdType, rowValues) {

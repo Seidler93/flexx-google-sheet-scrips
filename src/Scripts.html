@@ -2453,7 +2453,11 @@
     if (nextStatus === 'Cancel') {
       state.pendingDashboardCancel = {
         memberId: member.memberId,
-        previousStatus: previousStatus
+        previousStatus: previousStatus,
+        memberSnapshot: {
+          memberId: member.memberId,
+          fields: Object.assign({}, member.fields)
+        }
       };
       member.fields['Membership Status'] = 'Cancel';
       select.className = `table-control status-select ${getStatusClass('cancel')}`;
@@ -3361,9 +3365,12 @@
     const target = state.dashboardRows.find((row) => row.memberId === pending.memberId);
     if (target) {
       target.fields['Membership Status'] = pending.previousStatus;
-      if (state.activeView === 'dashboard') {
-        renderDashboardTable();
-      }
+    } else if (pending.memberSnapshot) {
+      pending.memberSnapshot.fields['Membership Status'] = pending.previousStatus;
+      state.dashboardRows.push(pending.memberSnapshot);
+    }
+    if (state.activeView === 'dashboard') {
+      renderDashboardTable();
     }
     state.pendingDashboardCancel = null;
   }
@@ -3385,6 +3392,7 @@
     updateCancelButtons();
     updateProfileActions();
     setStatus('Canceling membership...');
+    removeDashboardMemberRow(state.selectedMember.memberId);
 
     google.script.run
       .withSuccessHandler((member) => {
@@ -3397,6 +3405,7 @@
         updateCancelButtons();
         updateProfileActions();
         loadActiveViewData();
+        prefetchCancellations();
         setStatus('Membership canceled.');
       })
       .withFailureHandler((error) => {
@@ -3413,6 +3422,14 @@
         solution: elements.cancelSolutionInput.value.trim(),
         cancelDate: elements.cancelDateInput.value
       });
+  }
+
+  function removeDashboardMemberRow(memberId) {
+    const previousLength = state.dashboardRows.length;
+    state.dashboardRows = state.dashboardRows.filter((row) => row.memberId !== memberId);
+    if (state.dashboardRows.length !== previousLength && state.activeView === 'dashboard') {
+      renderDashboardTable();
+    }
   }
 
   function updateCancelButtons() {

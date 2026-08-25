@@ -2,6 +2,7 @@ function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('Flexx')
     .addItem('Open Staff Dashboard', 'openStaffDashboard')
+    .addItem('Add Member', 'showAddMemberForm')
     .addItem('Import Attendance', 'showSessionModal')
     .addItem('Update Weekly Data', 'updateWeeklyDataSnapshotsForAllLocations')
     .addItem('Backfill Member IDs', 'backfillMemberIdsFromMenu')
@@ -23,6 +24,33 @@ function openStaffDashboard() {
     .setHeight(120);
 
   SpreadsheetApp.getUi().showModalDialog(html, 'Flexx Staff');
+}
+
+function showAddMemberForm() {
+  var html = HtmlService.createHtmlOutputFromFile('AddMemberForm')
+    .setWidth(500)
+    .setHeight(700);
+  SpreadsheetApp.getUi().showModalDialog(html, 'Add New Member');
+}
+
+function addMember(form) {
+  var spreadsheetId = SpreadsheetApp.getActive().getId();
+  var locationKey = FLEXX_CONFIG.findLocationKeyBySpreadsheetId(spreadsheetId) || FLEXX_CONFIG.defaultLocationKey;
+  var result = addMemberFromWebApp(locationKey, {
+    firstName: form && form.firstName,
+    lastName: form && form.lastName,
+    trial: String(form && form.status || '').trim() === 'Trial',
+    trialDate: form && form.trialDate,
+    daysPerWeek: form && form.daysPerWeek,
+    paymentOption: form && form.paymentOption,
+    pricePoint: form && form.pricePoint,
+    startDate: form && form.startDate,
+    referral: form && form.referral,
+    referralMember: form && form.referralMember,
+    recurring: form && form.recurring,
+    notes: form && form.notes
+  });
+  return 'Member added successfully: ' + (result.fields && result.fields.Name ? result.fields.Name : '');
 }
 
 function showSessionModal() {

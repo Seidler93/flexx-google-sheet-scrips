@@ -1384,17 +1384,14 @@ function normalizeAttendanceNumber_(value) {
 }
 
 function getAttendanceWeekState_(attended, expected, net, status) {
-  if (isHoldStatus_(status) || expected === 0) {
+  if (isHoldStatus_(status)) {
     return 'hold';
   }
   if (expected > 0 && attended === 0) {
     return 'no-show';
   }
-  if (net < 0) {
+  if (expected > 0 && attended < expected) {
     return 'missed';
-  }
-  if (net > 0) {
-    return 'over';
   }
   return 'met';
 }
@@ -1450,7 +1447,7 @@ function getAttendanceData(locationKey) {
 
   var rawHeaders = attendanceSheet.getRange(1, 1, 1, lastColumn).getValues()[0];
   var displayHeaders = attendanceSheet.getRange(1, 1, 1, lastColumn).getDisplayValues()[0];
-  var periods = getAttendancePeriods_(rawHeaders, displayHeaders).slice(0, 4);
+  var periods = getAttendancePeriods_(rawHeaders, displayHeaders).slice(0, 8);
   if (!periods.length) {
     return {
       locationName: location.name,

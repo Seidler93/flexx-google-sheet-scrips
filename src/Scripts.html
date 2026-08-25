@@ -711,31 +711,18 @@
     const table = document.createElement('table');
     table.className = 'member-table attendance-table';
     const thead = document.createElement('thead');
-    const topRow = document.createElement('tr');
-    ['Member', 'Status', 'Flag'].forEach((label) => {
+    const headerRow = document.createElement('tr');
+    ['Member', 'Status'].forEach((label) => {
       const th = document.createElement('th');
-      th.rowSpan = 2;
       th.textContent = label;
-      topRow.appendChild(th);
+      headerRow.appendChild(th);
     });
     data.periods.forEach((period) => {
       const th = document.createElement('th');
-      th.colSpan = 3;
       th.textContent = period.label;
-      topRow.appendChild(th);
+      headerRow.appendChild(th);
     });
-    thead.appendChild(topRow);
-
-    const subRow = document.createElement('tr');
-    data.periods.forEach(() => {
-      ['Att', 'Exp', 'Net'].forEach((label) => {
-        const th = document.createElement('th');
-        th.className = 'attendance-subhead';
-        th.textContent = label;
-        subRow.appendChild(th);
-      });
-    });
-    thead.appendChild(subRow);
+    thead.appendChild(headerRow);
     table.appendChild(thead);
 
     const tbody = document.createElement('tbody');
@@ -761,12 +748,9 @@
       statusPill.textContent = status || '-';
       statusCell.appendChild(statusPill);
       row.appendChild(statusCell);
-      appendAttendanceTextCell(row, 'Flag', entry.categoryLabel, 'attendance-category-cell');
 
       entry.weeks.forEach((week) => {
-        appendAttendanceNumberCell(row, 'Att', week.attended, week.state);
-        appendAttendanceNumberCell(row, 'Exp', week.expected, week.state);
-        appendAttendanceNumberCell(row, 'Net', formatSignedNumber(week.net), week.state, week.net);
+        appendAttendanceWeekCell(row, week);
       });
       tbody.appendChild(row);
     });
@@ -785,15 +769,11 @@
     row.appendChild(cell);
   }
 
-  function appendAttendanceNumberCell(row, label, value, stateClass, netValue) {
+  function appendAttendanceWeekCell(row, week) {
     const cell = document.createElement('td');
-    cell.dataset.label = label;
-    cell.className = `attendance-number-cell attendance-week-${stateClass || 'met'}`;
-    if (label === 'Net') {
-      cell.classList.toggle('attendance-net-negative', Number(netValue) < 0);
-      cell.classList.toggle('attendance-net-positive', Number(netValue) > 0);
-    }
-    cell.textContent = value;
+    cell.dataset.label = week.label;
+    cell.className = `attendance-ratio-cell attendance-week-${week.state || 'met'}`;
+    cell.textContent = `${week.attended}/${week.expected}`;
     row.appendChild(cell);
   }
 

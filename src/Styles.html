@@ -827,7 +827,7 @@
   }
 
   .attendance-table {
-    min-width: 980px;
+    min-width: 1120px;
   }
 
   .attendance-table th {
@@ -844,6 +844,11 @@
     z-index: 2;
   }
 
+  .attendance-table th:nth-child(2),
+  .attendance-table td:nth-child(2) {
+    min-width: 120px;
+  }
+
   .attendance-table td:first-child {
     background: #ffffff;
   }
@@ -858,12 +863,8 @@
     z-index: 3;
   }
 
-  .attendance-table thead tr:first-child th {
+  .attendance-table thead th {
     top: 0;
-  }
-
-  .attendance-table thead tr:nth-child(2) th {
-    top: 38px;
   }
 
   .attendance-name-cell {
@@ -871,71 +872,36 @@
     font-weight: 800;
   }
 
-  .attendance-category-cell {
-    color: var(--muted);
-    font-size: 12px;
-    font-weight: 800;
-    text-transform: uppercase;
-  }
-
-  .attendance-subhead {
-    color: var(--muted);
-    font-size: 11px;
-  }
-
-  .attendance-number-cell {
+  .attendance-ratio-cell {
+    border-radius: 0;
     font-variant-numeric: tabular-nums;
-    min-width: 48px;
+    font-weight: 900;
+    min-width: 88px;
   }
 
   .attendance-week-no-show {
-    background: #fee2e2;
-    color: #991b1b;
+    background: #dc2626;
+    color: #ffffff;
   }
 
   .attendance-week-missed {
-    background: #fef3c7;
-    color: #92400e;
+    background: #facc15;
+    color: #713f12;
   }
 
   .attendance-week-hold {
-    background: #e5e7eb;
+    background: #d1d5db;
     color: #4b5563;
   }
 
   .attendance-week-over {
-    background: #dbeafe;
-    color: #1d4ed8;
+    background: #ffffff;
+    color: var(--text);
   }
 
   .attendance-week-met {
-    background: #f8fafc;
-  }
-
-  .attendance-net-negative,
-  .attendance-net-positive {
-    font-weight: 900;
-  }
-
-  .attendance-net-positive {
-    color: #047857;
-  }
-
-  .attendance-no-show .attendance-category-cell {
-    color: #b91c1c;
-  }
-
-  .attendance-two-week-miss .attendance-category-cell,
-  .attendance-missed-this-week .attendance-category-cell {
-    color: #a16207;
-  }
-
-  .attendance-on-hold .attendance-category-cell {
-    color: #4b5563;
-  }
-
-  .attendance-over-expected .attendance-category-cell {
-    color: #1d4ed8;
+    background: #ffffff;
+    color: var(--text);
   }
 
   .data-timeline-table {

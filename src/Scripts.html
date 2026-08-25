@@ -2733,6 +2733,12 @@
     }
 
     const requestId = state.globalSearchRequestId;
+    const localResults = getCachedMemberSearchResults(query);
+    if (localResults) {
+      renderGlobalSearchResults(localResults);
+      return;
+    }
+
     state.globalSearchTimer = window.setTimeout(() => {
       renderGlobalSearchLoading();
       const requestLocationKey = state.locationKey;
@@ -2751,6 +2757,74 @@
         })
         .searchMembers(state.locationKey, query);
     }, 180);
+  }
+
+  function getCachedMemberSearchResults(query) {
+    const rows = getCachedMemberRows();
+    if (!rows) {
+      return null;
+    }
+
+    const searchTerm = String(query || '').trim().toLowerCase();
+    return rows.map((member) => {
+      const name = getFieldValue(member.fields, 'Name');
+      const score = getLocalNameSearchScore(name, searchTerm);
+      if (score === null) {
+        return null;
+      }
+      const status = getFieldValue(member.fields, 'Membership Status');
+      return {
+        memberId: member.memberId,
+        name: name,
+        membershipStatus: status,
+        meta: status,
+        source: 'Members',
+        score: score
+      };
+    }).filter(Boolean).sort((left, right) => {
+      if (left.score !== right.score) {
+        return left.score - right.score;
+      }
+      return String(left.name || '').localeCompare(String(right.name || ''));
+    }).slice(0, 10).map((result) => {
+      delete result.score;
+      return result;
+    });
+  }
+
+  function getCachedMemberRows() {
+    if (state.dashboardRows && state.dashboardRows.length) {
+      return state.dashboardRows;
+    }
+    const cachedDashboard = getCachedViewData('dashboard');
+    if (cachedDashboard && cachedDashboard.memberTable && cachedDashboard.memberTable.rows) {
+      return cachedDashboard.memberTable.rows;
+    }
+    return null;
+  }
+
+  function getLocalNameSearchScore(name, searchTerm) {
+    const normalizedName = String(name || '').trim().toLowerCase();
+    if (!normalizedName || !searchTerm) {
+      return null;
+    }
+    if (normalizedName === searchTerm) {
+      return 0;
+    }
+    if (normalizedName.startsWith(searchTerm)) {
+      return 1;
+    }
+    const index = normalizedName.indexOf(searchTerm);
+    if (index > -1) {
+      return 2 + (index / 100);
+    }
+    const parts = normalizedName.split(/[\s,]+/).filter(Boolean);
+    for (let partIndex = 0; partIndex < parts.length; partIndex += 1) {
+      if (parts[partIndex].startsWith(searchTerm)) {
+        return 3 + (partIndex / 100);
+      }
+    }
+    return null;
   }
 
   function handleGlobalSearchKeydown(event) {

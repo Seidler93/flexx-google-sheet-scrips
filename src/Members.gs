@@ -2558,11 +2558,11 @@ function clearHoldRowsForMember_(sheet, name) {
 
     var rowCount = endRow - startRow + 1;
     var values = sheet.getRange(startRow, 1, rowCount, 1).getValues();
-    values.forEach(function (row, index) {
-      if (String(row[0] || '').trim().toLowerCase() === normalizedName) {
+    for (var index = values.length - 1; index >= 0; index -= 1) {
+      if (String(values[index][0] || '').trim().toLowerCase() === normalizedName) {
         clearHoldRow_(sheet, startRow + index);
       }
-    });
+    }
   });
 }
 
@@ -2601,7 +2601,9 @@ function setCancellationRowStatus_(sheet, rowNumber, status) {
 }
 
 function clearHoldRow_(sheet, rowNumber) {
-  sheet.getRange(rowNumber, 1, 1, Math.max(sheet.getLastColumn(), 8)).clearContent();
+  if (rowNumber > 1 && rowNumber <= sheet.getLastRow()) {
+    sheet.deleteRow(rowNumber);
+  }
 }
 
 function readMembersTable_(sheet) {

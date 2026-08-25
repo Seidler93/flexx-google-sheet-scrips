@@ -386,7 +386,7 @@ function addMemberFromWebApp(locationKey, form) {
     setValueForHeader_(headers, row, MEMBER_ID_HEADER, createMemberId_(resolvedLocationKey));
     setValueForHeader_(headers, row, 'Name', formattedName);
     setValueForHeader_(headers, row, 'Membership Status', isTrial ? 'Trial' : 'Active');
-    setValueForHeader_(headers, row, 'Membership Age', 'New member under 90 days');
+    setValueForHeader_(headers, row, 'Membership Age', buildMembershipAgeFormula_(headers, rowNumber));
     setValueForHeader_(headers, row, 'Reason/Solution', 'New member under 90 days');
     setValueForHeader_(headers, row, 'Days Per Week', String(form && form.daysPerWeek || '').trim());
     setValueForHeader_(headers, row, 'Payment Option', String(form && form.paymentOption || '').trim());
@@ -2290,7 +2290,7 @@ function buildMemberRowFromCancellation_(memberHeaders, cancellationHeaders, can
       return 'Active';
     }
     if (header === 'Membership Age') {
-      return valueForHeader_(cancellationHeaders, cancellationRow, 'Membership Age at Cancel');
+      return buildMembershipAgeFormula_(memberHeaders, 2);
     }
     if (header === 'Reason/Solution') {
       return valueForHeader_(cancellationHeaders, cancellationRow, 'Reason');
@@ -2924,6 +2924,16 @@ function columnIndexToLetter_(columnIndex) {
     index = Math.floor((index - remainder) / 26);
   }
   return letter;
+}
+
+function buildMembershipAgeFormula_(headers, rowNumber) {
+  var startDateIndex = headers.indexOf('Start Date');
+  if (startDateIndex === -1) {
+    return '';
+  }
+
+  var startCell = columnIndexToLetter_(startDateIndex + 1) + rowNumber;
+  return '=IF(' + startCell + '="","",IF(TODAY()<' + startCell + ',"0 months",IF(DATEDIF(' + startCell + ',TODAY(),"Y")>0,DATEDIF(' + startCell + ',TODAY(),"Y")&" year"&IF(DATEDIF(' + startCell + ',TODAY(),"Y")=1,"","s")&IF(DATEDIF(' + startCell + ',TODAY(),"YM")>0," "&DATEDIF(' + startCell + ',TODAY(),"YM")&" month"&IF(DATEDIF(' + startCell + ',TODAY(),"YM")=1,"","s"),""),DATEDIF(' + startCell + ',TODAY(),"M")&" month"&IF(DATEDIF(' + startCell + ',TODAY(),"M")=1,"","s"))))';
 }
 
 function formatClientValue_(value) {

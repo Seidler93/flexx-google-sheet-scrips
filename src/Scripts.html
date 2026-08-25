@@ -26,6 +26,7 @@
     globalSearchRequestId: 0,
     mobileActionsMemberId: null,
     mobileDashboardMode: null,
+    pendingDashboardCancel: null,
     dashboardSort: {
       column: 'Name',
       direction: 'asc'
@@ -2403,18 +2404,53 @@
     if (nextStatus === 'Green Hold' || nextStatus === 'Yellow Hold') {
       select.value = previousStatus;
       select.className = `table-control status-select ${getStatusClass(previousStatus.trim().toLowerCase())}`;
-      loadMemberForAction(member.memberId, () => openHoldModal(nextStatus));
+      selectDashboardMemberForImmediateAction(member);
+      openHoldModal(nextStatus);
+      refreshSelectedMemberForAction(member.memberId);
       return;
     }
 
     if (nextStatus === 'Cancel') {
-      select.value = previousStatus;
-      select.className = `table-control status-select ${getStatusClass(previousStatus.trim().toLowerCase())}`;
-      loadMemberForAction(member.memberId, () => openCancelModal());
+      state.pendingDashboardCancel = {
+        memberId: member.memberId,
+        previousStatus: previousStatus
+      };
+      member.fields['Membership Status'] = 'Cancel';
+      select.className = `table-control status-select ${getStatusClass('cancel')}`;
+      selectDashboardMemberForImmediateAction(member);
+      openCancelModal();
+      refreshSelectedMemberForAction(member.memberId);
       return;
     }
 
     saveDashboardStatus(member, nextStatus);
+  }
+
+  function selectDashboardMemberForImmediateAction(member) {
+    state.selectedMember = {
+      memberId: member.memberId,
+      fields: Object.assign({}, member.fields),
+      editableFields: [],
+      lockedFields: []
+    };
+    state.dirty = false;
+    updateProfileActions();
+  }
+
+  function refreshSelectedMemberForAction(memberId) {
+    google.script.run
+      .withSuccessHandler((member) => {
+        if (!state.selectedMember || state.selectedMember.memberId !== memberId) {
+          return;
+        }
+        state.selectedMember = member;
+        state.dirty = false;
+        updateProfileActions();
+      })
+      .withFailureHandler((error) => {
+        showError(error);
+      })
+      .getMember(state.locationKey, memberId);
   }
 
   function saveDashboardStatus(member, status) {
@@ -3272,8 +3308,24 @@
     if (state.saving) {
       return;
     }
+    rollbackPendingDashboardCancel();
     elements.cancelModal.hidden = true;
     elements.cancelModalError.textContent = '';
+  }
+
+  function rollbackPendingDashboardCancel() {
+    if (!state.pendingDashboardCancel) {
+      return;
+    }
+    const pending = state.pendingDashboardCancel;
+    const target = state.dashboardRows.find((row) => row.memberId === pending.memberId);
+    if (target) {
+      target.fields['Membership Status'] = pending.previousStatus;
+      if (state.activeView === 'dashboard') {
+        renderDashboardTable();
+      }
+    }
+    state.pendingDashboardCancel = null;
   }
 
   function submitCancelForm(event) {
@@ -3299,6 +3351,7 @@
         state.saving = false;
         state.selectedMember = member;
         state.dirty = false;
+        state.pendingDashboardCancel = null;
         closeCancelModal();
         renderMemberProfile(member);
         updateCancelButtons();
@@ -3308,6 +3361,7 @@
       })
       .withFailureHandler((error) => {
         state.saving = false;
+        rollbackPendingDashboardCancel();
         updateCancelButtons();
         updateProfileActions();
         elements.cancelModalError.textContent = error && error.message ? error.message : String(error || 'Could not cancel membership.');

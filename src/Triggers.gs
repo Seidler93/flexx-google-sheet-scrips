@@ -6,8 +6,11 @@ function onOpen() {
     .addItem('Import Attendance', 'showSessionModal')
     .addItem('Update Weekly Data', 'updateWeeklyDataFromMenu')
     .addItem('Install Weekly Data Trigger', 'setupWeeklyDataSnapshotTriggerFromMenu')
+    .addItem('Install Upcoming Hold Trigger', 'setupUpcomingHoldCheckTriggerFromMenu')
     .addItem('Backfill Member IDs', 'backfillMemberIdsFromMenu')
-    .addItem('Install Status Edit Triggers', 'setupMembershipStatusEditTriggers')
+    .addItem('Install Status Edit Triggers', 'setupMembershipStatusEditTriggersFromMenu')
+    .addItem('Install All Triggers', 'setupAllTriggersFromMenu')
+    .addItem('Check Installed Triggers', 'showInstalledTriggersFromMenu')
     .addToUi();
 }
 
@@ -139,6 +142,12 @@ function setupMembershipStatusEditTriggers() {
   });
   console.log('Membership status edit triggers installed for all locations.');
   return 'Membership status edit triggers installed for all locations.';
+}
+
+function setupMembershipStatusEditTriggersFromMenu() {
+  var message = setupMembershipStatusEditTriggers();
+  SpreadsheetApp.getUi().alert(message);
+  return message;
 }
 
 function deleteMembershipStatusEditTriggers_() {
@@ -445,6 +454,12 @@ function setupUpcomingHoldCheckTrigger() {
   return 'Upcoming hold check trigger installed for about 5:15 AM daily.';
 }
 
+function setupUpcomingHoldCheckTriggerFromMenu() {
+  var message = setupUpcomingHoldCheckTrigger();
+  SpreadsheetApp.getUi().alert(message);
+  return message;
+}
+
 function setupWeeklyDataSnapshotTrigger() {
   deleteWeeklyDataSnapshotTriggers_();
   ScriptApp.newTrigger('updateWeeklyDataSnapshotsForAllLocations')
@@ -461,6 +476,45 @@ function setupWeeklyDataSnapshotTriggerFromMenu() {
   var message = setupWeeklyDataSnapshotTrigger();
   SpreadsheetApp.getUi().alert(message);
   return message;
+}
+
+function setupAllTriggersFromMenu() {
+  var messages = [
+    setupMembershipStatusEditTriggers(),
+    setupUpcomingHoldCheckTrigger(),
+    setupWeeklyDataSnapshotTrigger()
+  ];
+  SpreadsheetApp.getUi().alert('Trigger setup complete:\n\n' + messages.join('\n'));
+  return messages;
+}
+
+function showInstalledTriggersFromMenu() {
+  var triggers = listInstalledTriggers();
+  var message = triggers.length
+    ? triggers.map(function (trigger, index) {
+      return [
+        String(index + 1) + '. ' + trigger.handlerFunction,
+        'Event: ' + trigger.eventType,
+        'Source: ' + trigger.triggerSource,
+        trigger.triggerSourceId ? 'Source ID: ' + trigger.triggerSourceId : ''
+      ].filter(function (line) { return line; }).join('\n');
+    }).join('\n\n')
+    : 'No installable triggers found.';
+
+  SpreadsheetApp.getUi().alert('Installed Triggers:\n\n' + message);
+  return triggers;
+}
+
+function listInstalledTriggers() {
+  return ScriptApp.getProjectTriggers().map(function (trigger) {
+    return {
+      handlerFunction: trigger.getHandlerFunction(),
+      eventType: String(trigger.getEventType()),
+      triggerSource: String(trigger.getTriggerSource()),
+      triggerSourceId: typeof trigger.getTriggerSourceId === 'function' ? trigger.getTriggerSourceId() : '',
+      uniqueId: trigger.getUniqueId()
+    };
+  });
 }
 
 function deleteWeeklyDataSnapshotTriggers_() {

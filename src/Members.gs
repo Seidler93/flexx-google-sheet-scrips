@@ -1882,6 +1882,13 @@ function ensureMemberWatchlistHeaders_(sheet) {
 }
 
 function formatMemberWatchlistValue_(fieldName, value) {
+  if (fieldName === 'Monday Text' || fieldName === 'Wednesday Text') {
+    var textNormalized = String(value || '').trim().toLowerCase();
+    if (textNormalized === 'yes' || textNormalized === 'y' || textNormalized === 'x' || textNormalized === 'true') {
+      return 'Yes';
+    }
+    return 'No';
+  }
   if (fieldName === 'On schedule?') {
     var normalized = String(value || '').trim().toLowerCase();
     if (normalized === 'on') {

@@ -842,7 +842,7 @@
 
   function renderWatchlist(data) {
     state.watchlistData = data;
-    const columns = data.columns || [];
+    const columns = getWatchlistDisplayColumns(data.columns || []);
     const rows = data.rows || [];
     elements.watchlistTitle.textContent = `${data.locationName || 'Location'} Watch List`;
     elements.watchlistMeta.textContent = rows.length ? `${rows.length} entries` : '';
@@ -888,6 +888,26 @@
     const pendingKey = getWatchlistCellKey(entry, column);
     const isPending = Boolean(state.pendingWatchlistSaves[pendingKey]);
     cell.classList.toggle('pending-cell', isPending);
+
+    if (column === 'Monday Text' || column === 'Wednesday Text') {
+      const select = document.createElement('select');
+      const normalizedValue = normalizeWatchlistYesNo(value);
+      select.className = `table-control watchlist-select ${getWatchlistYesNoClass(normalizedValue)}`;
+      ['Yes', 'No'].forEach((optionValue) => {
+        const option = document.createElement('option');
+        option.value = optionValue;
+        option.textContent = optionValue;
+        select.appendChild(option);
+      });
+      select.value = normalizedValue;
+      select.disabled = isPending;
+      select.addEventListener('change', () => {
+        select.className = `table-control watchlist-select ${getWatchlistYesNoClass(select.value)}`;
+        saveWatchlistEntry(entry, column, select.value, cell);
+      });
+      cell.appendChild(select);
+      return;
+    }
 
     if (column === 'On schedule?') {
       const select = document.createElement('select');
@@ -979,6 +999,26 @@
 
   function getWatchlistCellKey(entry, column) {
     return `${entry.rowNumber}:${column}`;
+  }
+
+  function getWatchlistDisplayColumns(columns) {
+    return ['Name', 'Monday Text', 'Wednesday Text', 'On schedule?'].filter((column) => {
+      return columns.indexOf(column) > -1;
+    });
+  }
+
+  function normalizeWatchlistYesNo(value) {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (normalized === 'yes' || normalized === 'y' || normalized === 'x' || normalized === 'true') {
+      return 'Yes';
+    }
+    return 'No';
+  }
+
+  function getWatchlistYesNoClass(value) {
+    return String(value || '').trim().toLowerCase() === 'yes'
+      ? 'watchlist-yes'
+      : 'watchlist-no';
   }
 
   function getWatchlistScheduleClass(value) {

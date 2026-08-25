@@ -4,7 +4,8 @@ function onOpen() {
     .addItem('Open Staff Dashboard', 'openStaffDashboard')
     .addItem('Add Member', 'showAddMemberForm')
     .addItem('Import Attendance', 'showSessionModal')
-    .addItem('Update Weekly Data', 'updateWeeklyDataSnapshotsForAllLocations')
+    .addItem('Update Weekly Data', 'updateWeeklyDataFromMenu')
+    .addItem('Install Weekly Data Trigger', 'setupWeeklyDataSnapshotTriggerFromMenu')
     .addItem('Backfill Member IDs', 'backfillMemberIdsFromMenu')
     .addItem('Install Status Edit Triggers', 'setupMembershipStatusEditTriggers')
     .addToUi();
@@ -71,6 +72,12 @@ function backfillMemberIdsFromMenu() {
     : backfillMemberIdsForAllLocations();
 
   SpreadsheetApp.getUi().alert('Member ID backfill complete:\n\n' + JSON.stringify(result, null, 2));
+  return result;
+}
+
+function updateWeeklyDataFromMenu() {
+  var result = updateWeeklyDataSnapshotsForAllLocations();
+  SpreadsheetApp.getUi().alert('Weekly data updated:\n\n' + JSON.stringify(result, null, 2));
   return result;
 }
 
@@ -448,6 +455,12 @@ function setupWeeklyDataSnapshotTrigger() {
     .create();
   console.log('Weekly data snapshot trigger installed for Monday around 5:45 AM.');
   return 'Weekly data snapshot trigger installed for Monday around 5:45 AM.';
+}
+
+function setupWeeklyDataSnapshotTriggerFromMenu() {
+  var message = setupWeeklyDataSnapshotTrigger();
+  SpreadsheetApp.getUi().alert(message);
+  return message;
 }
 
 function deleteWeeklyDataSnapshotTriggers_() {

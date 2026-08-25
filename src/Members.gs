@@ -1045,6 +1045,7 @@ function backfillCancellationMemberIdsForDefaultLocation() {
 
 function getDataTimeline(locationKey) {
   var location = getLocationConfig_(locationKey);
+  updateWeeklyDataSnapshotForLocation_(location.key, getCurrentWeekBounds_());
   var spreadsheet = SpreadsheetApp.openById(location.spreadsheetId);
   var sheet = getRequiredSheet_(spreadsheet, location.sheets.data || 'Dashboard', 'Data');
   var lastRow = sheet.getLastRow();

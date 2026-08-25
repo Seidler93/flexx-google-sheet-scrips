@@ -417,7 +417,10 @@ function addMemberFromWebApp(locationKey, form) {
 function backfillMemberIdsForAllLocations() {
   try {
     var results = FLEXX_CONFIG.getLocationKeys().map(function (locationKey) {
-      return backfillMemberIdsForLocation_(locationKey);
+      return {
+        members: backfillMemberIdsForLocation_(locationKey),
+        cancellations: backfillCancellationMemberIdsForLocation_(locationKey)
+      };
     });
     console.log('backfillMemberIdsForAllLocations results: ' + JSON.stringify(results));
     return results;
@@ -429,7 +432,10 @@ function backfillMemberIdsForAllLocations() {
 
 function backfillMemberIdsForDefaultLocation() {
   try {
-    var result = backfillMemberIdsForLocation_(FLEXX_CONFIG.defaultLocationKey);
+    var result = {
+      members: backfillMemberIdsForLocation_(FLEXX_CONFIG.defaultLocationKey),
+      cancellations: backfillCancellationMemberIdsForLocation_(FLEXX_CONFIG.defaultLocationKey)
+    };
     console.log('backfillMemberIdsForDefaultLocation result: ' + JSON.stringify(result));
     return result;
   } catch (error) {
@@ -847,6 +853,30 @@ function updateCancellationEntry(locationKey, payload) {
     };
   } finally {
     lock.releaseLock();
+  }
+}
+
+function backfillCancellationMemberIdsForAllLocations() {
+  try {
+    var results = FLEXX_CONFIG.getLocationKeys().map(function (locationKey) {
+      return backfillCancellationMemberIdsForLocation_(locationKey);
+    });
+    console.log('backfillCancellationMemberIdsForAllLocations results: ' + JSON.stringify(results));
+    return results;
+  } catch (error) {
+    notifyAppIssue_('Flexx Staff cancellation Member ID backfill failed', error.stack || error.message || String(error));
+    throw error;
+  }
+}
+
+function backfillCancellationMemberIdsForDefaultLocation() {
+  try {
+    var result = backfillCancellationMemberIdsForLocation_(FLEXX_CONFIG.defaultLocationKey);
+    console.log('backfillCancellationMemberIdsForDefaultLocation result: ' + JSON.stringify(result));
+    return result;
+  } catch (error) {
+    notifyAppIssue_('Flexx Staff cancellation Member ID backfill failed', error.stack || error.message || String(error));
+    throw error;
   }
 }
 
@@ -1623,6 +1653,60 @@ function backfillMemberIdsForLocation_(locationKey) {
   };
 }
 
+function backfillCancellationMemberIdsForLocation_(locationKey) {
+  var location = getLocationConfig_(locationKey);
+  var spreadsheet = SpreadsheetApp.openById(location.spreadsheetId);
+  var membersSheet = getRequiredSheet_(spreadsheet, location.sheets.members, 'Members');
+  var cancellationsSheet = getRequiredSheet_(spreadsheet, location.sheets.cancellations, 'Cancellations/Ex-Members');
+
+  backfillMemberIdsForLocation_(location.key);
+  var idColumn = ensureCancellationMemberIdColumn_(cancellationsSheet);
+  var headers = getSheetHeaderRow_(cancellationsSheet, 1);
+  var nameIndex = headers.indexOf('Name');
+  var memberIdIndex = headers.indexOf(MEMBER_ID_HEADER);
+  var lastRow = cancellationsSheet.getLastRow();
+  if (lastRow < 2 || nameIndex === -1 || memberIdIndex === -1) {
+    return {
+      location: location.name,
+      addedColumn: idColumn.addedColumn,
+      movedColumn: idColumn.movedColumn,
+      updatedRows: 0,
+      unmatchedRows: 0
+    };
+  }
+
+  var memberIdByName = getStableMemberIdMapByName_(membersSheet);
+  var values = cancellationsSheet.getRange(2, 1, lastRow - 1, headers.length).getValues();
+  var updatedRows = 0;
+  var unmatchedRows = 0;
+  values.forEach(function (row) {
+    if (String(row[memberIdIndex] || '').trim()) {
+      return;
+    }
+
+    var name = String(row[nameIndex] || '').trim().toLowerCase();
+    if (name && memberIdByName[name]) {
+      row[memberIdIndex] = memberIdByName[name];
+    } else {
+      row[memberIdIndex] = createCancellationMemberId_(location.key);
+      unmatchedRows += 1;
+    }
+    updatedRows += 1;
+  });
+
+  if (updatedRows) {
+    cancellationsSheet.getRange(2, 1, values.length, headers.length).setValues(values);
+  }
+
+  return {
+    location: location.name,
+    addedColumn: idColumn.addedColumn,
+    movedColumn: idColumn.movedColumn,
+    updatedRows: updatedRows,
+    unmatchedRows: unmatchedRows
+  };
+}
+
 function validateLocationSheets_(locationKey) {
   var location = getLocationConfig_(locationKey);
   var spreadsheet = SpreadsheetApp.openById(location.spreadsheetId);
@@ -1759,9 +1843,17 @@ function promoteUpcomingHoldsForLocation_(locationKey) {
 }
 
 function ensureMemberIdColumn_(sheet) {
+  return ensureColumnAfterHeader_(sheet, MEMBER_ID_HEADER, 'Created Date');
+}
+
+function ensureCancellationMemberIdColumn_(sheet) {
+  return ensureColumnAfterHeader_(sheet, MEMBER_ID_HEADER, 'Created Date');
+}
+
+function ensureColumnAfterHeader_(sheet, headerName, afterHeaderName) {
   var headers = getSheetHeaderRow_(sheet, MEMBER_HEADERS.length + MEMBER_OPTIONAL_HEADERS.length);
-  var existingIndex = headers.indexOf(MEMBER_ID_HEADER);
-  var createdDateIndex = headers.indexOf('Created Date');
+  var existingIndex = headers.indexOf(headerName);
+  var createdDateIndex = headers.indexOf(afterHeaderName);
   var insertAfterColumn = createdDateIndex > -1 ? createdDateIndex + 1 : sheet.getLastColumn();
   if (existingIndex > -1) {
     if (existingIndex === createdDateIndex + 1) {
@@ -1785,7 +1877,7 @@ function ensureMemberIdColumn_(sheet) {
   }
 
   sheet.insertColumnAfter(insertAfterColumn);
-  sheet.getRange(1, insertAfterColumn + 1).setValue(MEMBER_ID_HEADER);
+  sheet.getRange(1, insertAfterColumn + 1).setValue(headerName);
   return {
     index: insertAfterColumn,
     addedColumn: true,
@@ -1795,6 +1887,39 @@ function ensureMemberIdColumn_(sheet) {
 
 function createMemberId_(locationKey) {
   return String(locationKey || 'member') + '-' + Utilities.getUuid();
+}
+
+function createCancellationMemberId_(locationKey) {
+  return String(locationKey || 'member') + '-cancel-' + Utilities.getUuid();
+}
+
+function getStableMemberIdMapByName_(sheet) {
+  var idColumn = ensureMemberIdColumn_(sheet);
+  var data = readMembersTable_(sheet);
+  var nameIndex = data.headers.indexOf('Name');
+  var memberIdIndex = data.headers.indexOf(MEMBER_ID_HEADER);
+  var missingIds = 0;
+  var idValues = [];
+  var map = {};
+
+  data.rows.forEach(function (row) {
+    var memberId = String(row[memberIdIndex] || '').trim();
+    if (!memberId) {
+      memberId = createMemberId_(FLEXX_CONFIG.findLocationKeyBySpreadsheetId(sheet.getParent().getId()));
+      missingIds += 1;
+    }
+    idValues.push([memberId]);
+    var name = String(row[nameIndex] || '').trim().toLowerCase();
+    if (name && !map[name]) {
+      map[name] = memberId;
+    }
+  });
+
+  if (missingIds && idValues.length) {
+    sheet.getRange(data.firstDataRow, idColumn.index + 1, idValues.length, 1).setValues(idValues);
+  }
+
+  return map;
 }
 
 function getRequiredSheet_(spreadsheet, sheetName, label) {
@@ -1901,8 +2026,12 @@ function ensureUpcomingHoldHeaders_(sheet) {
 }
 
 function appendCancellationRow_(sheet, memberHeaders, memberRow, reason, solution, cancelDate) {
+  ensureCancellationMemberIdColumn_(sheet);
   var cancelHeaders = getSheetHeaderRow_(sheet, 1);
   var row = cancelHeaders.map(function (header) {
+    if (header === MEMBER_ID_HEADER) {
+      return valueForHeader_(memberHeaders, memberRow, MEMBER_ID_HEADER) || createCancellationMemberId_(FLEXX_CONFIG.findLocationKeyBySpreadsheetId(sheet.getParent().getId()));
+    }
     if (header === 'Membership Age at Cancel') {
       return valueForHeader_(memberHeaders, memberRow, 'Membership Age');
     }

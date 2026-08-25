@@ -1733,6 +1733,7 @@ function updateHoldEntry(locationKey, payload) {
     if (requestedStatus === 'Cancel') {
       updateMemberFromHold_(memberInfo, 'Cancel', reason);
       appendCancellationRow_(cancellationsSheet, memberInfo.headers, memberInfo.row, reason, '', new Date());
+      memberInfo.sheet.deleteRow(memberInfo.rowNumber);
       clearHoldRow_(holdsSheet, rowNumber);
       SpreadsheetApp.flush();
       return getHoldsData(resolvedLocationKey);

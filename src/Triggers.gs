@@ -196,7 +196,18 @@ function handleMembersStatusEdit_(locationKey, spreadsheet, membersSheet, rowNum
     } else if (newStatus === 'Cancel') {
       clearHoldRowsForMember_(holdsSheet, name);
       clearUpcomingHoldRowsForMember_(upcomingHoldsSheet, name);
+      setValueForHeader_(headers, row, 'Membership Status', 'Cancel');
       upsertCancellationForMember_(cancellationsSheet, headers, row, name, new Date());
+      runMemberUpdateHooks_({
+        locationKey: locationKey,
+        sheet: membersSheet.getName(),
+        rowNumber: rowNumber,
+        oldStatus: valueForHeader_(headers, before, 'Membership Status') || oldStatus,
+        newStatus: newStatus
+      });
+      membersSheet.deleteRow(rowNumber);
+      SpreadsheetApp.flush();
+      return;
     } else if (newStatus === 'Green Hold' || newStatus === 'Yellow Hold') {
       clearHoldRowsForMember_(holdsSheet, name);
       clearUpcomingHoldRowsForMember_(upcomingHoldsSheet, name);
@@ -264,6 +275,9 @@ function handleCancellationsStatusEdit_(locationKey, spreadsheet, cancellationsS
     } else if (newStatus === 'Cancel') {
       clearHoldRowsForMember_(holdsSheet, name);
       clearUpcomingHoldRowsForMember_(upcomingHoldsSheet, name);
+      memberInfo.sheet.deleteRow(memberInfo.rowNumber);
+      SpreadsheetApp.flush();
+      return;
     }
     memberInfo.sheet.getRange(memberInfo.rowNumber, 1, 1, memberInfo.headers.length).setValues([memberInfo.row]);
     SpreadsheetApp.flush();

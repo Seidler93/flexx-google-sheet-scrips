@@ -1032,6 +1032,7 @@
     const cachedData = getCachedViewData('holds');
     if (cachedData) {
       renderHolds(cachedData);
+      setHoldsRefreshing(true);
       setStatus('Refreshing holds...');
     } else {
       setStatus('Loading holds...');
@@ -1049,6 +1050,7 @@
         state.loadingViews.holds = false;
         setCachedViewData('holds', data);
         renderHolds(data);
+        setHoldsRefreshing(false);
         setStatus('');
       })
       .withFailureHandler((error) => {
@@ -1056,6 +1058,7 @@
           return;
         }
         state.loadingViews.holds = false;
+        setHoldsRefreshing(false);
         showError(error);
       })
       .getHoldsData(state.locationKey);
@@ -1081,6 +1084,14 @@
     renderStaticTable(elements.greenHoldsTable, data.green.columns, data.green.rows, 'No green holds found.');
     renderStaticTable(elements.yellowHoldsTable, data.yellow.columns, data.yellow.rows, 'No extended holds found.');
     renderStaticTable(elements.upcomingHoldsTable, data.upcoming ? data.upcoming.columns : [], data.upcoming ? data.upcoming.rows : [], 'No upcoming holds found.');
+  }
+
+  function setHoldsRefreshing(isRefreshing) {
+    [elements.greenHoldsTable, elements.yellowHoldsTable, elements.upcomingHoldsTable].forEach((container) => {
+      if (container) {
+        container.classList.toggle('refreshing-table', isRefreshing);
+      }
+    });
   }
 
   function loadCancellations() {

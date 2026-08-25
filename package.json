@@ -5,8 +5,12 @@
   "description": "Flexx staff Google Apps Script web app.",
   "scripts": {
     "login": "clasp login",
+    "login:bash": "clasp login --no-localhost",
     "pull": "clasp pull",
     "push": "clasp push",
+    "push:force": "clasp push --force",
+    "deploy:live": "node scripts/deploy-live.js",
+    "setup:status-triggers": "clasp run setupMembershipStatusEditTriggers",
     "open": "clasp open-script",
     "status": "clasp status",
     "logs": "clasp logs"

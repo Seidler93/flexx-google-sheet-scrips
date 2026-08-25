@@ -1370,6 +1370,11 @@
     state.loadingViews = {};
   }
 
+  function clearCachedViewData(view) {
+    delete state.viewCache[getViewCacheKey(view)];
+    delete state.loadingViews[view];
+  }
+
   function getViewCacheKey(view) {
     return `${state.locationKey}:${view}`;
   }
@@ -3404,6 +3409,8 @@
         renderMemberProfile(member);
         updateCancelButtons();
         updateProfileActions();
+        clearCachedViewData('cancellations');
+        state.cancellationsRows = [];
         loadActiveViewData();
         prefetchCancellations();
         setStatus('Membership canceled.');

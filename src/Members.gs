@@ -2193,7 +2193,9 @@ function appendCancellationRow_(sheet, memberHeaders, memberRow, reason, solutio
     return valueForHeader_(memberHeaders, memberRow, header);
   });
 
-  sheet.appendRow(row);
+  sheet.insertRowBefore(2);
+  sheet.getRange(2, 1, 1, row.length).setValues([row]);
+  return 2;
 }
 
 function readHoldSection_(sheet, holdType, memberRowMap) {

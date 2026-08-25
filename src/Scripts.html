@@ -2262,13 +2262,6 @@
       return;
     }
 
-    if (!entry.memberId) {
-      select.value = previousStatus;
-      select.className = `table-control status-select ${getStatusClass(previousStatus.trim().toLowerCase())}`;
-      showError('Could not find the matching member row for this cancellation.');
-      return;
-    }
-
     entry.fields['Membership Status'] = nextStatus;
     renderCancellationsTable();
     setStatus('Updating member status...');
@@ -2286,11 +2279,9 @@
         loadCancellations();
         showError(error);
       })
-      .setMemberStatus(state.locationKey, {
-        memberId: entry.memberId,
+      .reactivateCancellationMember(state.locationKey, {
         status: nextStatus,
-        cancellationRowNumber: entry.rowNumber,
-        reactivate: nextStatus === 'Active' || nextStatus === 'Trial'
+        cancellationRowNumber: entry.rowNumber
       });
   }
 
@@ -3141,8 +3132,9 @@
 
   function updateProfileActions() {
     const status = getSelectedMemberStatus();
-    elements.holdMemberButton.disabled = !state.selectedMember || state.saving || state.holding;
-    elements.cancelMemberButton.disabled = !state.selectedMember || state.saving || state.holding || status === 'cancel';
+    const hasEditableMemberRow = Boolean(state.selectedMember && state.selectedMember.memberId);
+    elements.holdMemberButton.disabled = !hasEditableMemberRow || state.saving || state.holding;
+    elements.cancelMemberButton.disabled = !hasEditableMemberRow || state.saving || state.holding || status === 'cancel';
     elements.holdMemberButton.textContent = state.holding ? 'Saving Hold...' : (isSelectedMemberOnHold() ? 'Edit Hold' : 'Put on Hold');
   }
 

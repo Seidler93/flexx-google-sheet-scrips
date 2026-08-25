@@ -641,6 +641,9 @@ function saveMemberChanges(locationKey, payload) {
 
 function setMemberStatus(locationKey, payload) {
   var resolvedLocationKey = resolveLocationKey_(locationKey);
+  if (payload && payload.cancellationRowNumber && !(payload && payload.memberId)) {
+    return reactivateCancellationMember(locationKey, payload);
+  }
   var rowNumber = parseMemberRowNumber_(payload && payload.memberId);
   var status = String(payload && payload.status || '').trim();
   if (status !== 'Active' && status !== 'Trial') {
@@ -712,6 +715,7 @@ function cancelMember(locationKey, payload) {
     var cancellationsSheet = getRequiredSheet_(spreadsheet, location.sheets.cancellations, 'Cancellations/Ex-Members');
     validateMemberRow_(membersSheet, rowNumber);
 
+    ensureMemberIdColumn_(membersSheet);
     var headers = getHeaderRow_(membersSheet);
     var rowRange = membersSheet.getRange(rowNumber, 1, 1, headers.length);
     var row = rowRange.getValues()[0];
@@ -723,9 +727,6 @@ function cancelMember(locationKey, payload) {
     }
     rowRange.setValues([row]);
 
-    appendCancellationRow_(cancellationsSheet, headers, row, reason, solution, cancelDate);
-    SpreadsheetApp.flush();
-
     runMemberUpdateHooks_({
       locationKey: resolvedLocationKey,
       sheet: membersSheet.getName(),
@@ -734,6 +735,81 @@ function cancelMember(locationKey, payload) {
       newStatus: 'Cancel',
       cancelReason: reason,
       cancelDate: cancelDate
+    });
+
+    appendCancellationRow_(cancellationsSheet, headers, row, reason, solution, cancelDate);
+    membersSheet.deleteRow(rowNumber);
+    SpreadsheetApp.flush();
+
+    return {
+      memberId: null,
+      fields: buildMemberFieldsFromRow_(headers, row),
+      editableFields: [],
+      lockedFields: MEMBER_HEADERS.slice()
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function reactivateCancellationMember(locationKey, payload) {
+  var resolvedLocationKey = resolveLocationKey_(locationKey);
+  var cancellationRowNumber = Number(payload && payload.cancellationRowNumber);
+  var status = String(payload && payload.status || '').trim();
+  if (status !== 'Active' && status !== 'Trial') {
+    throw new Error('Cancelled members can only be reactivated as Active or Trial.');
+  }
+  if (!cancellationRowNumber || Math.floor(cancellationRowNumber) !== cancellationRowNumber || cancellationRowNumber < 2) {
+    throw new Error('Cancellation row not found.');
+  }
+
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var location = getLocationConfig_(resolvedLocationKey);
+    var spreadsheet = SpreadsheetApp.openById(location.spreadsheetId);
+    var membersSheet = getRequiredSheet_(spreadsheet, location.sheets.members, 'Members');
+    var cancellationsSheet = getRequiredSheet_(spreadsheet, location.sheets.cancellations, 'Cancellations/Ex-Members');
+    if (cancellationRowNumber > cancellationsSheet.getLastRow()) {
+      throw new Error('Cancellation row not found.');
+    }
+
+    ensureMemberIdColumn_(membersSheet);
+    var memberHeaders = getHeaderRow_(membersSheet);
+    var cancellationHeaders = getSheetHeaderRow_(cancellationsSheet, 1);
+    var cancellationRow = cancellationsSheet.getRange(cancellationRowNumber, 1, 1, cancellationHeaders.length).getValues()[0];
+    var existingMember = findMemberFromCancellationRow_(membersSheet, cancellationHeaders, cancellationRow);
+    var rowNumber = existingMember ? existingMember.rowNumber : 2;
+    var before = existingMember ? existingMember.row.slice() : null;
+    var row = existingMember ? existingMember.row.slice() : buildMemberRowFromCancellation_(memberHeaders, cancellationHeaders, cancellationRow, resolvedLocationKey);
+
+    setValueForHeader_(memberHeaders, row, 'Membership Status', status);
+    setValueForHeader_(memberHeaders, row, 'Reactivation', true);
+    setValueForHeader_(memberHeaders, row, 'Created Date', new Date());
+    if (!String(valueForHeader_(memberHeaders, row, MEMBER_ID_HEADER) || '').trim()) {
+      setValueForHeader_(memberHeaders, row, MEMBER_ID_HEADER, createMemberId_(resolvedLocationKey));
+    }
+
+    if (existingMember) {
+      membersSheet.getRange(rowNumber, 1, 1, memberHeaders.length).setValues([row]);
+    } else {
+      membersSheet.insertRowBefore(rowNumber);
+      membersSheet.getRange(rowNumber, 1, 1, memberHeaders.length).setValues([row]);
+    }
+
+    setCancellationRowStatus_(cancellationsSheet, cancellationRowNumber, status);
+    SpreadsheetApp.flush();
+
+    runMemberUpdateHooks_({
+      locationKey: resolvedLocationKey,
+      sheet: membersSheet.getName(),
+      rowNumber: rowNumber,
+      oldStatus: before ? valueForHeader_(memberHeaders, before, 'Membership Status') : 'Cancel',
+      newStatus: status,
+      oldDaysPerWeek: before ? valueForHeader_(memberHeaders, before, 'Days Per Week') : '',
+      newDaysPerWeek: valueForHeader_(memberHeaders, row, 'Days Per Week'),
+      oldNotes: before ? valueForHeader_(memberHeaders, before, 'Notes') : '',
+      newNotes: valueForHeader_(memberHeaders, row, 'Notes')
     });
 
     return getMember(resolvedLocationKey, rowNumber);
@@ -2196,6 +2272,60 @@ function appendCancellationRow_(sheet, memberHeaders, memberRow, reason, solutio
   sheet.insertRowBefore(2);
   sheet.getRange(2, 1, 1, row.length).setValues([row]);
   return 2;
+}
+
+function buildMemberFieldsFromRow_(headers, row) {
+  var fields = {};
+  MEMBER_HEADERS.forEach(function (fieldName) {
+    fields[fieldName] = formatClientValue_(valueForHeader_(headers, row, fieldName));
+  });
+  return fields;
+}
+
+function buildMemberRowFromCancellation_(memberHeaders, cancellationHeaders, cancellationRow, locationKey) {
+  var row = memberHeaders.map(function (header) {
+    if (header === 'Membership Status') {
+      return 'Active';
+    }
+    if (header === 'Membership Age') {
+      return valueForHeader_(cancellationHeaders, cancellationRow, 'Membership Age at Cancel');
+    }
+    if (header === 'Reason/Solution') {
+      return valueForHeader_(cancellationHeaders, cancellationRow, 'Reason');
+    }
+    if (header === 'Reactivation') {
+      return true;
+    }
+    if (header === 'Created Date') {
+      return new Date();
+    }
+    if (header === MEMBER_ID_HEADER) {
+      return valueForHeader_(cancellationHeaders, cancellationRow, MEMBER_ID_HEADER) || createMemberId_(locationKey);
+    }
+    return valueForHeader_(cancellationHeaders, cancellationRow, header);
+  });
+  return row;
+}
+
+function findMemberFromCancellationRow_(membersSheet, cancellationHeaders, cancellationRow) {
+  var data = readMembersTable_(membersSheet);
+  var memberId = String(valueForHeader_(cancellationHeaders, cancellationRow, MEMBER_ID_HEADER) || '').trim();
+  var name = String(valueForHeader_(cancellationHeaders, cancellationRow, 'Name') || '').trim().toLowerCase();
+  var memberIdIndex = data.headers.indexOf(MEMBER_ID_HEADER);
+  var nameIndex = data.headers.indexOf('Name');
+
+  for (var i = 0; i < data.rows.length; i += 1) {
+    var row = data.rows[i];
+    var idMatches = memberId && memberIdIndex > -1 && String(row[memberIdIndex] || '').trim() === memberId;
+    var nameMatches = name && nameIndex > -1 && String(row[nameIndex] || '').trim().toLowerCase() === name;
+    if (idMatches || nameMatches) {
+      return {
+        rowNumber: data.firstDataRow + i,
+        row: row
+      };
+    }
+  }
+  return null;
 }
 
 function readHoldSection_(sheet, holdType, memberRowMap) {

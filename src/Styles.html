@@ -309,6 +309,12 @@
     min-height: 0;
   }
 
+  #watchlistView.active {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+  }
+
   .metric-grid {
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -353,7 +359,21 @@
     width: 100%;
   }
 
+  .watchlist-panel {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    flex-direction: column;
+    width: 100%;
+  }
+
   .cancellations-panel .table-wrap {
+    flex: 1;
+    max-height: none;
+    min-height: 0;
+  }
+
+  .watchlist-panel .table-wrap {
     flex: 1;
     max-height: none;
     min-height: 0;
@@ -1054,6 +1074,41 @@
     background: #ffffff;
     color: var(--text);
     padding: 5px 7px;
+  }
+
+  .watchlist-table {
+    min-width: 860px;
+  }
+
+  .watchlist-table tbody tr {
+    cursor: default;
+  }
+
+  .watchlist-table td[data-label="Additional Information"] {
+    min-width: 280px;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  .watchlist-input {
+    min-width: 0;
+  }
+
+  .watchlist-select {
+    min-width: 96px;
+    font-weight: 800;
+  }
+
+  .watchlist-schedule-on {
+    background: #dbeafe;
+    border-color: #bfdbfe;
+    color: #1d4ed8;
+  }
+
+  .watchlist-schedule-off {
+    background: #fee2e2;
+    border-color: #fecaca;
+    color: #b91c1c;
   }
 
   .table-checkbox-control {

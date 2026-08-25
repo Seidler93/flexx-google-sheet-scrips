@@ -31,6 +31,7 @@
         <nav class="nav-list" aria-label="Primary">
           <button class="nav-item active" data-view="dashboard" type="button">Dashboard</button>
           <button class="nav-item" data-view="attendance" type="button">Attendance</button>
+          <button class="nav-item" data-view="watchlist" type="button">Watch List</button>
           <button class="nav-item" data-view="holds" type="button">Holds</button>
           <button class="nav-item" data-view="cancellations" type="button">Cancels</button>
           <button class="nav-item" data-view="data" type="button">Data</button>
@@ -120,6 +121,16 @@
               <span id="attendanceMeta" class="item-meta"></span>
             </div>
             <div id="attendanceTable" class="table-wrap empty-state">Loading attendance...</div>
+          </div>
+        </section>
+
+        <section id="watchlistView" class="view">
+          <div class="panel dashboard-table-panel watchlist-panel">
+            <div class="panel-header">
+              <h2 id="watchlistTitle">Member Watchlist</h2>
+              <span id="watchlistMeta" class="item-meta"></span>
+            </div>
+            <div id="watchlistTable" class="table-wrap watchlist-table-wrap empty-state">Loading watchlist...</div>
           </div>
         </section>
 

@@ -100,6 +100,14 @@ var UPCOMING_HOLD_HEADERS = [
   'End of 6-week Nurture'
 ];
 
+var MEMBER_WATCHLIST_HEADERS = [
+  'Name',
+  'Monday Text',
+  'Wednesday Text',
+  'Additional Information',
+  'On schedule?'
+];
+
 var DATA_METRIC_ROWS = [
   'Total Members',
   'Weekly Net',
@@ -479,6 +487,85 @@ function promoteUpcomingHoldsForAllLocations() {
   } catch (error) {
     notifyAppIssue_('Flexx Staff upcoming hold promotion failed', error.stack || error.message || String(error));
     throw error;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function getMemberWatchlistData(locationKey) {
+  var resolvedLocationKey = resolveLocationKey_(locationKey);
+  if (resolvedLocationKey === 'master') {
+    throw new Error('Select a location to view the member watchlist.');
+  }
+
+  var location = getLocationConfig_(resolvedLocationKey);
+  var spreadsheet = SpreadsheetApp.openById(location.spreadsheetId);
+  var sheet = getRequiredSheet_(spreadsheet, location.sheets.memberWatchlist || 'Member Watchlist', 'Member Watchlist');
+  var headers = ensureMemberWatchlistHeaders_(sheet);
+  var lastRow = sheet.getLastRow();
+  var rows = [];
+
+  if (lastRow >= 2) {
+    var values = sheet.getRange(2, 1, lastRow - 1, headers.length).getValues();
+    values.forEach(function (row, index) {
+      var isEmpty = row.every(function (value) {
+        return String(value === null || typeof value === 'undefined' ? '' : value).trim() === '';
+      });
+      if (isEmpty) {
+        return;
+      }
+
+      var fields = {};
+      headers.forEach(function (header, headerIndex) {
+        fields[header] = formatClientValue_(row[headerIndex]);
+      });
+      rows.push({
+        rowNumber: index + 2,
+        fields: fields
+      });
+    });
+  }
+
+  return {
+    locationName: location.name,
+    columns: headers,
+    rows: rows
+  };
+}
+
+function updateMemberWatchlistEntry(locationKey, payload) {
+  var resolvedLocationKey = resolveLocationKey_(locationKey);
+  if (resolvedLocationKey === 'master') {
+    throw new Error('Select a location before editing the watchlist.');
+  }
+
+  var rowNumber = Number(payload && payload.rowNumber);
+  if (!rowNumber || Math.floor(rowNumber) !== rowNumber || rowNumber < 2) {
+    throw new Error('Watchlist row not found.');
+  }
+
+  var fields = payload && payload.fields ? payload.fields : {};
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var location = getLocationConfig_(resolvedLocationKey);
+    var spreadsheet = SpreadsheetApp.openById(location.spreadsheetId);
+    var sheet = getRequiredSheet_(spreadsheet, location.sheets.memberWatchlist || 'Member Watchlist', 'Member Watchlist');
+    var headers = ensureMemberWatchlistHeaders_(sheet);
+    if (rowNumber > Math.max(sheet.getLastRow(), 1)) {
+      throw new Error('Watchlist row not found.');
+    }
+
+    Object.keys(fields).forEach(function (fieldName) {
+      var index = headers.indexOf(fieldName);
+      if (index === -1) {
+        return;
+      }
+      sheet.getRange(rowNumber, index + 1).setValue(formatMemberWatchlistValue_(fieldName, fields[fieldName]));
+    });
+    SpreadsheetApp.flush();
+
+    return getMemberWatchlistData(resolvedLocationKey);
   } finally {
     lock.releaseLock();
   }
@@ -1711,6 +1798,7 @@ function validateLocationSheets_(locationKey) {
 
   validateSheetExists_(spreadsheet, location.sheets.members, location.name, 'Members', issues);
   validateSheetExists_(spreadsheet, location.sheets.attendance || 'Attendance', location.name, 'Attendance', issues);
+  validateSheetExists_(spreadsheet, location.sheets.memberWatchlist || 'Member Watchlist', location.name, 'Member Watchlist', issues);
   validateSheetExists_(spreadsheet, location.sheets.holds, location.name, 'HOLDS', issues);
   validateSheetExists_(spreadsheet, location.sheets.upcomingHolds || 'Upcoming Holds', location.name, 'Upcoming Holds', issues);
   validateSheetExists_(spreadsheet, location.sheets.cancellations, location.name, 'Cancellations/Ex-Members', issues);
@@ -1746,6 +1834,16 @@ function validateLocationSheets_(locationKey) {
     });
   }
 
+  var memberWatchlistSheet = spreadsheet.getSheetByName(location.sheets.memberWatchlist || 'Member Watchlist');
+  if (memberWatchlistSheet) {
+    var memberWatchlistHeaders = getSheetHeaderRow_(memberWatchlistSheet, MEMBER_WATCHLIST_HEADERS.length);
+    MEMBER_WATCHLIST_HEADERS.forEach(function (header) {
+      if (memberWatchlistHeaders.indexOf(header) === -1) {
+        issues.push(location.name + ': Member Watchlist is missing header "' + header + '".');
+      }
+    });
+  }
+
   return {
     location: location.name,
     ok: issues.length === 0,
@@ -1757,6 +1855,44 @@ function validateSheetExists_(spreadsheet, sheetName, locationName, label, issue
   if (!spreadsheet.getSheetByName(sheetName)) {
     issues.push(locationName + ': missing "' + sheetName + '" tab for ' + label + '.');
   }
+}
+
+function ensureMemberWatchlistHeaders_(sheet) {
+  var headers = getSheetHeaderRow_(sheet, MEMBER_WATCHLIST_HEADERS.length).slice(0, MEMBER_WATCHLIST_HEADERS.length);
+  var hasAnyHeader = headers.some(function (header) {
+    return Boolean(header);
+  });
+  if (!hasAnyHeader) {
+    sheet.getRange(1, 1, 1, MEMBER_WATCHLIST_HEADERS.length).setValues([MEMBER_WATCHLIST_HEADERS]);
+    return MEMBER_WATCHLIST_HEADERS.slice();
+  }
+
+  var missingHeaders = MEMBER_WATCHLIST_HEADERS.filter(function (header) {
+    return headers.indexOf(header) === -1;
+  });
+  if (missingHeaders.length) {
+    notifyAppIssue_(
+      'Flexx Staff Member Watchlist header issue',
+      'The Member Watchlist sheet is missing required header(s): ' + missingHeaders.join(', ') + '. Found headers: ' + headers.join(', ')
+    );
+    throw new Error('Sheet setup issue: Member Watchlist is missing required header(s): ' + missingHeaders.join(', ') + '. This has been logged for repair.');
+  }
+
+  return headers;
+}
+
+function formatMemberWatchlistValue_(fieldName, value) {
+  if (fieldName === 'On schedule?') {
+    var normalized = String(value || '').trim().toLowerCase();
+    if (normalized === 'on') {
+      return 'On';
+    }
+    if (normalized === 'off') {
+      return 'Off';
+    }
+    return String(value || '').trim();
+  }
+  return String(value === null || typeof value === 'undefined' ? '' : value).trim();
 }
 
 function promoteUpcomingHoldsForLocation_(locationKey) {

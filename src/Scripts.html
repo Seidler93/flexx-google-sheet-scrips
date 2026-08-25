@@ -13,9 +13,11 @@
     cancellationsRows: [],
     visibleCancellationsColumns: [],
     attendanceData: null,
+    watchlistData: null,
     dataTimeline: null,
     holdsData: null,
     pendingHoldSaves: {},
+    pendingWatchlistSaves: {},
     pendingCancellationSaves: {},
     pendingDataSaves: {},
     viewCache: {},
@@ -63,6 +65,7 @@
     elements.dashboardView = document.getElementById('dashboardView');
     elements.membersView = document.getElementById('membersView');
     elements.attendanceView = document.getElementById('attendanceView');
+    elements.watchlistView = document.getElementById('watchlistView');
     elements.holdsView = document.getElementById('holdsView');
     elements.cancellationsView = document.getElementById('cancellationsView');
     elements.dataView = document.getElementById('dataView');
@@ -83,6 +86,9 @@
     elements.attendanceTitle = document.getElementById('attendanceTitle');
     elements.attendanceMeta = document.getElementById('attendanceMeta');
     elements.attendanceTable = document.getElementById('attendanceTable');
+    elements.watchlistTitle = document.getElementById('watchlistTitle');
+    elements.watchlistMeta = document.getElementById('watchlistMeta');
+    elements.watchlistTable = document.getElementById('watchlistTable');
     elements.dataTimelineTitle = document.getElementById('dataTimelineTitle');
     elements.dataTimelineMeta = document.getElementById('dataTimelineMeta');
     elements.dataTimelineTable = document.getElementById('dataTimelineTable');
@@ -361,6 +367,7 @@
     elements.dashboardView.classList.toggle('active', view === 'dashboard');
     elements.membersView.classList.toggle('active', view === 'members');
     elements.attendanceView.classList.toggle('active', view === 'attendance');
+    elements.watchlistView.classList.toggle('active', view === 'watchlist');
     elements.holdsView.classList.toggle('active', view === 'holds');
     elements.cancellationsView.classList.toggle('active', view === 'cancellations');
     elements.dataView.classList.toggle('active', view === 'data');
@@ -376,6 +383,9 @@
     }
     if (view === 'attendance') {
       return 'Attendance';
+    }
+    if (view === 'watchlist') {
+      return 'Watch List';
     }
     if (view === 'cancellations') {
       return 'Cancellations';
@@ -521,6 +531,8 @@
       loadHolds();
     } else if (state.activeView === 'attendance') {
       loadAttendance();
+    } else if (state.activeView === 'watchlist') {
+      loadWatchlist();
     } else if (state.activeView === 'cancellations') {
       loadCancellations();
     } else if (state.activeView === 'data') {
@@ -784,6 +796,194 @@
     cell.className = `attendance-ratio-cell attendance-week-${week.state || 'met'}`;
     cell.textContent = `${week.attended}/${week.expected}`;
     row.appendChild(cell);
+  }
+
+  function loadWatchlist() {
+    const requestLocationKey = state.locationKey;
+    const cachedData = getCachedViewData('watchlist');
+    if (cachedData) {
+      renderWatchlist(cachedData);
+      setStatus('Refreshing watchlist...');
+    } else {
+      setStatus('Loading watchlist...');
+      setWatchlistLoading();
+    }
+    if (state.loadingViews.watchlist) {
+      return;
+    }
+    state.loadingViews.watchlist = true;
+    google.script.run
+      .withSuccessHandler((data) => {
+        if (requestLocationKey !== state.locationKey) {
+          return;
+        }
+        state.loadingViews.watchlist = false;
+        setCachedViewData('watchlist', data);
+        renderWatchlist(data);
+        setStatus('');
+      })
+      .withFailureHandler((error) => {
+        if (requestLocationKey !== state.locationKey) {
+          return;
+        }
+        state.loadingViews.watchlist = false;
+        showError(error);
+      })
+      .getMemberWatchlistData(state.locationKey);
+  }
+
+  function setWatchlistLoading() {
+    elements.watchlistTitle.textContent = 'Member Watchlist';
+    elements.watchlistMeta.textContent = '';
+    elements.watchlistTable.className = 'table-wrap watchlist-table-wrap empty-state';
+    elements.watchlistTable.textContent = 'Loading watchlist...';
+  }
+
+  function renderWatchlist(data) {
+    state.watchlistData = data;
+    const columns = data.columns || [];
+    const rows = data.rows || [];
+    elements.watchlistTitle.textContent = `${data.locationName || 'Location'} Watch List`;
+    elements.watchlistMeta.textContent = rows.length ? `${rows.length} entries` : '';
+
+    if (!rows.length) {
+      elements.watchlistTable.className = 'table-wrap watchlist-table-wrap empty-state';
+      elements.watchlistTable.textContent = 'No watchlist entries found.';
+      return;
+    }
+
+    const table = document.createElement('table');
+    table.className = 'member-table watchlist-table';
+    const thead = document.createElement('thead');
+    const headerRow = document.createElement('tr');
+    columns.forEach((column) => {
+      const th = document.createElement('th');
+      th.textContent = column;
+      headerRow.appendChild(th);
+    });
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    rows.forEach((entry) => {
+      const row = document.createElement('tr');
+      columns.forEach((column) => {
+        const cell = document.createElement('td');
+        cell.dataset.label = column;
+        renderWatchlistCell(cell, column, entry);
+        row.appendChild(cell);
+      });
+      tbody.appendChild(row);
+    });
+    table.appendChild(tbody);
+
+    elements.watchlistTable.className = 'table-wrap watchlist-table-wrap';
+    elements.watchlistTable.innerHTML = '';
+    elements.watchlistTable.appendChild(table);
+  }
+
+  function renderWatchlistCell(cell, column, entry) {
+    const value = getFieldValue(entry.fields, column);
+    const pendingKey = getWatchlistCellKey(entry, column);
+    const isPending = Boolean(state.pendingWatchlistSaves[pendingKey]);
+    cell.classList.toggle('pending-cell', isPending);
+
+    if (column === 'On schedule?') {
+      const select = document.createElement('select');
+      select.className = `table-control watchlist-select ${getWatchlistScheduleClass(value)}`;
+      ['On', 'Off'].forEach((optionValue) => {
+        const option = document.createElement('option');
+        option.value = optionValue;
+        option.textContent = optionValue;
+        select.appendChild(option);
+      });
+      if (value && value !== 'On' && value !== 'Off') {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = value;
+        select.appendChild(option);
+      }
+      select.value = value || 'On';
+      select.disabled = isPending;
+      select.addEventListener('change', () => {
+        select.className = `table-control watchlist-select ${getWatchlistScheduleClass(select.value)}`;
+        saveWatchlistEntry(entry, column, select.value, cell);
+      });
+      cell.appendChild(select);
+      return;
+    }
+
+    const input = document.createElement('input');
+    input.className = 'table-control watchlist-input';
+    input.value = value;
+    input.disabled = isPending;
+    input.addEventListener('blur', () => {
+      if (input.value !== value) {
+        saveWatchlistEntry(entry, column, input.value, cell);
+      }
+    });
+    input.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        input.blur();
+      }
+    });
+    cell.appendChild(input);
+  }
+
+  function saveWatchlistEntry(entry, column, value, cell) {
+    const pendingKey = getWatchlistCellKey(entry, column);
+    if (state.pendingWatchlistSaves[pendingKey]) {
+      setStatus('Still saving that cell...');
+      return;
+    }
+
+    const previousValue = getFieldValue(entry.fields, column);
+    entry.fields[column] = value;
+    state.pendingWatchlistSaves[pendingKey] = true;
+    if (cell) {
+      cell.classList.add('pending-cell');
+      const control = cell.querySelector('.table-control');
+      if (control) {
+        control.disabled = true;
+      }
+    }
+    setStatus('Saving watchlist...');
+    google.script.run
+      .withSuccessHandler((data) => {
+        delete state.pendingWatchlistSaves[pendingKey];
+        setCachedViewData('watchlist', data);
+        state.watchlistData = data;
+        if (cell) {
+          cell.classList.remove('pending-cell');
+          const control = cell.querySelector('.table-control');
+          if (control) {
+            control.disabled = false;
+          }
+        }
+        setStatus('Watchlist updated.');
+      })
+      .withFailureHandler((error) => {
+        delete state.pendingWatchlistSaves[pendingKey];
+        entry.fields[column] = previousValue;
+        loadWatchlist();
+        showError(error);
+      })
+      .updateMemberWatchlistEntry(state.locationKey, {
+        rowNumber: entry.rowNumber,
+        fields: {
+          [column]: value
+        }
+      });
+  }
+
+  function getWatchlistCellKey(entry, column) {
+    return `${entry.rowNumber}:${column}`;
+  }
+
+  function getWatchlistScheduleClass(value) {
+    return String(value || '').trim().toLowerCase() === 'off'
+      ? 'watchlist-schedule-off'
+      : 'watchlist-schedule-on';
   }
 
   function loadHolds() {

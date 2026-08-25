@@ -1,6 +1,6 @@
 var FLEXX_CONFIG = (function () {
   var DEFAULT_LOCATION_KEY = 'highlandPark';
-  var PRODUCTION_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbzbd5Oo9SGcYsb7phOGouruJY1XzB_Ru6JPlfxo8JMU_C5qdcVgvmWmlWVRZ7BKBOdU/exec';
+  var PRODUCTION_WEB_APP_URL = 'https://script.google.com/a/macros/flexxpersonaltraining.com/s/AKfycbzyTXr9WejAhnay9AhItrQ-XGYfkLxKfEmk750se4i0KTCRPCVOD2xkzFtmHGmmLcfj/exec';
   var ALERTS = {
     email: '',
     slackWebhookUrl: '',
@@ -15,6 +15,7 @@ var FLEXX_CONFIG = (function () {
       sheets: {
         members: 'Members',
         attendance: 'Attendance',
+        memberWatchlist: 'Member Watchlist',
         holds: 'HOLDS',
         upcomingHolds: 'Upcoming Holds',
         cancellations: 'Cancellations/Ex-Members',
@@ -27,6 +28,7 @@ var FLEXX_CONFIG = (function () {
       sheets: {
         members: 'Members',
         attendance: 'Attendance',
+        memberWatchlist: 'Member Watchlist',
         holds: 'HOLDS',
         upcomingHolds: 'Upcoming Holds',
         cancellations: 'Cancellations/Ex-Members',

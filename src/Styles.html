@@ -877,6 +877,26 @@
     text-align: center;
   }
 
+  .attendance-table tbody tr:hover td,
+  .attendance-table tbody tr:focus-within td {
+    background: #eef5ff;
+  }
+
+  .attendance-table tbody tr:hover .attendance-week-no-show,
+  .attendance-table tbody tr:focus-within .attendance-week-no-show {
+    background: #b91c1c;
+  }
+
+  .attendance-table tbody tr:hover .attendance-week-missed,
+  .attendance-table tbody tr:focus-within .attendance-week-missed {
+    background: #fde68a;
+  }
+
+  .attendance-table tbody tr:hover .attendance-week-hold,
+  .attendance-table tbody tr:focus-within .attendance-week-hold {
+    background: #d1d5db;
+  }
+
   .attendance-table thead th {
     background: #e2e8f0;
     color: var(--text);
